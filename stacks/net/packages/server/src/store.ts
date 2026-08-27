@@ -3,12 +3,17 @@
 // 003): the sample table is the only durable truth this package keeps.
 
 import type { DatabaseSync } from 'node:sqlite';
+import { isJsonString } from './json.ts';
 import { bucketDays, classifyIntervals, computeDeltas, DEFAULT_AGENT_PATTERNS, filterInterfaces } from './model.ts';
 
 /** The sampling cadence the collector runs at; gap classification keys off 3x it. */
 export const CADENCE_MS = 3_600_000;
 
-export interface SampleRow {
+// Written as an object type rather than an interface so it carries the implicit
+// index signature that makes it comparable to the `Record<string, …>` shape
+// node:sqlite returns — that comparability is what lets the assertions below
+// name this type directly instead of laundering a row through `unknown`.
+export type SampleRow = {
   readonly timestamp: number;
   readonly boot_epoch: number;
   readonly name: string;
@@ -16,10 +21,12 @@ export interface SampleRow {
   readonly interface: string;
   readonly bytes_in: number;
   readonly bytes_out: number;
-}
+};
 
 function queryRows(db: DatabaseSync, sql: string): SampleRow[] {
-  return db.prepare(sql).all() as unknown as SampleRow[];
+  // SAFETY: every caller below passes a SELECT naming exactly the seven
+  // SampleRow columns, each declared NOT NULL by migration 001.
+  return db.prepare(sql).all() as SampleRow[];
 }
 
 /** Every stored sample ordered into per-series delta order. */
@@ -91,6 +98,12 @@ export interface NetConfig {
   agentPatterns: string[];
 }
 
+/** One row of the key/value config table. An object type for the same reason `SampleRow` is. */
+type ConfigRow = {
+  readonly key: string;
+  readonly value: string;
+};
+
 export const DEFAULT_NET_CONFIG: NetConfig = {
   limitBytes: null,
   resetDay: null,
@@ -103,7 +116,9 @@ export function readNetConfig(db: DatabaseSync): NetConfig {
     resetDay: DEFAULT_NET_CONFIG.resetDay,
     agentPatterns: [...DEFAULT_NET_CONFIG.agentPatterns],
   };
-  const rows = db.prepare('SELECT key, value FROM config').all() as unknown as Array<{ key: string; value: string }>;
+  // SAFETY: the SELECT names exactly `key` and `value`, both NOT NULL TEXT
+  // columns of the config table created by migration 001.
+  const rows = db.prepare('SELECT key, value FROM config').all() as ConfigRow[];
   for (const row of rows) {
     if (row.key === 'limitBytes' || row.key === 'resetDay') {
       const parsed = Number(row.value);
@@ -111,7 +126,7 @@ export function readNetConfig(db: DatabaseSync): NetConfig {
     } else if (row.key === 'agentPatterns') {
       try {
         const parsed: unknown = JSON.parse(row.value);
-        if (Array.isArray(parsed) && parsed.every((entry) => typeof entry === 'string' && entry.length > 0)) {
+        if (Array.isArray(parsed) && parsed.every((entry) => isJsonString(entry) && entry.length > 0)) {
           config.agentPatterns = parsed;
         }
       } catch {
@@ -140,10 +155,12 @@ export function clearNetConfigValue(db: DatabaseSync, key: string): void {
  * The collector's write path and every route read through this one function so
  * they cannot disagree.
  */
-export function classifyCorpus(db: DatabaseSync): {
+export interface CorpusClassification {
   intervals: ReturnType<typeof classifyIntervals>;
   sampleCount: number;
-} {
+}
+
+export function classifyCorpus(db: DatabaseSync): CorpusClassification {
   const samples = loadSamples(db);
   const wire = filterInterfaces(samples.map((sample) => ({ ...sample, interface: sample.interface })));
   const intervals = [];

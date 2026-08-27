@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { ApiContext } from '../src/api.ts';
 import { handleApiRequest } from '../src/api.ts';
 import { openNetDatabase } from '../src/db.ts';
+import type { JsonValue } from '../src/json.ts';
 
 // Fixed clock: 2026-08-20T12:00:00Z, a Thursday. Timezone pinned to UTC so the
 // day bucketing in these cases is readable straight off the timestamps.
@@ -82,6 +83,8 @@ describe('GET /api/summary', () => {
         bytesOut: 199_999,
       });
     });
+    // SAFETY: `/api/summary` answers 200 with a JSON object for every seeded
+    // fixture; the assertion only unlocks reading its keys to compare them.
     const body = get(ctx, '/api/summary')?.body as Record<string, never>;
     expect(body.totals).toEqual({ bytesIn: 1000, bytesOut: 500 });
     expect(body.coverage).toEqual({ sampleCount: 4, firstSampleAt: NOW - 3_600_000 });
@@ -115,6 +118,8 @@ describe('GET /api/summary', () => {
       });
       insertSample(db, { timestamp: NOW, name: 'Safari', pid: 400, interface: 'en0', bytesIn: 5000, bytesOut: 5000 });
     });
+    // SAFETY: `/api/summary` answers 200 with a JSON object for every seeded
+    // fixture; the assertion only unlocks reading its keys to compare them.
     const body = get(ctx, '/api/summary')?.body as Record<string, never>;
     expect(body.agentShare).toEqual([{ name: 'Claude Helper (Renderer)', bytes: 1000 }]);
   });
@@ -123,6 +128,8 @@ describe('GET /api/summary', () => {
     const ctx = makeContext((db) => {
       insertSample(db, { timestamp: NOW, name: 'node', pid: 1, interface: 'en0', bytesIn: 1, bytesOut: 1 });
     });
+    // SAFETY: `/api/summary` answers 200 with a JSON object for every seeded
+    // fixture; the assertion only unlocks reading its keys to compare them.
     const body = get(ctx, '/api/summary')?.body as Record<string, never>;
     expect(body.period).toEqual({ start: '2026-08-01', end: '2026-08-31' });
   });
@@ -150,6 +157,8 @@ describe('GET /api/days', () => {
       });
     });
     const reply = get(ctx, '/api/days?window=3');
+    // SAFETY: `/api/days` answers 200 with `{ days, gaps }`, and `days` carries
+    // one entry per day in the window with exactly these four fields.
     const body = reply?.body as { days: Array<{ date: string; bytesIn: number; bytesOut: number; known: boolean }> };
     expect(body.days).toHaveLength(3);
     expect(body.days.map((day) => [day.date, day.bytesIn, day.known])).toEqual([
@@ -163,7 +172,10 @@ describe('GET /api/days', () => {
     const ctx = makeContext();
     const low = get(ctx, '/api/days?window=-5');
     const high = get(ctx, '/api/days?window=9999');
+    // SAFETY: both requests hit `/api/days`, which always answers a body
+    // carrying a `days` array; only its length is read here.
     expect((low?.body as { days: unknown[] } | undefined)?.days).toHaveLength(1);
+    // SAFETY: as above — the same route, the same guaranteed `days` array.
     expect((high?.body as { days: unknown[] } | undefined)?.days).toHaveLength(366);
   });
 
@@ -208,6 +220,8 @@ describe('GET /api/days', () => {
         bytesOut: 0,
       });
     });
+    // SAFETY: `/api/days` always answers a `gaps` array, and this fixture seeds
+    // a boot change, so each entry carries the start/end/kind triple read below.
     const body = get(ctx, '/api/days?window=30')?.body as {
       gaps: Array<{ start: number; end: number; kind: string }>;
     };
@@ -219,7 +233,7 @@ describe('GET /api/days', () => {
 describe('config routes', () => {
   const ORIGINS = ['http://localhost:5173', 'http://127.0.0.1:5173'];
 
-  function request(ctx: ApiContext, method: string, path: string, options: { origin?: string; body?: unknown } = {}) {
+  function request(ctx: ApiContext, method: string, path: string, options: { origin?: string; body?: JsonValue } = {}) {
     return handleApiRequest(ctx, method, new URL(path, 'http://localhost'), {
       origin: options.origin,
       body: options.body,
@@ -250,7 +264,7 @@ describe('config routes', () => {
 
   it('rejects invalid values with 400 and persists nothing', () => {
     const ctx = makeContext();
-    for (const body of [
+    const invalidBodies: JsonValue[] = [
       { limitBytes: 0 },
       { limitBytes: 1.5 },
       { limitBytes: -10 },
@@ -259,7 +273,8 @@ describe('config routes', () => {
       { agentPatterns: [''] },
       { agentPatterns: 'node' },
       'not-an-object',
-    ]) {
+    ];
+    for (const body of invalidBodies) {
       const reply = request(ctx, 'PUT', '/api/config', { origin: 'http://127.0.0.1:5173', body });
       expect(reply?.status).toBe(400);
     }

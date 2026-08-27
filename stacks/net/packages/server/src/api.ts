@@ -3,6 +3,7 @@
 // request/response objects onto them.
 
 import type { DatabaseSync } from 'node:sqlite';
+import { asJsonObject, asSafeInteger, isJsonString, type JsonValue } from './json.ts';
 import { bucketDays, classifyAgents, filterInterfaces, periodBounds, stripPidSuffix } from './model.ts';
 import {
   classifyCorpus,
@@ -21,21 +22,33 @@ export interface ApiContext {
   readonly timeZone: string;
 }
 
+/**
+ * The CORS headers this API emits. Every field is optional because the read and
+ * write paths emit different subsets of them, and because the allowed origin is
+ * echoed only when the request declared one on the allow list.
+ */
+export interface CorsHeaders {
+  'access-control-allow-origin'?: string;
+  'access-control-allow-methods'?: string;
+  'access-control-allow-headers'?: string;
+  vary?: string;
+}
+
 export interface ApiReply {
   readonly status: number;
   readonly body: unknown;
-  readonly headers: Record<string, string>;
+  readonly headers: CorsHeaders;
 }
 
-const OPEN_CORS: Record<string, string> = { 'access-control-allow-origin': '*' };
+const OPEN_CORS: CorsHeaders = { 'access-control-allow-origin': '*' };
 
 /**
  * Write-CORS, mirroring the claude server's chat shape: GETs answer open, PUT
  * echoes only an origin on the allow list (`NET_ALLOWED_ORIGINS`). A request
  * that declares no origin is a non-browser client and is allowed.
  */
-function writeCors(origin: string | undefined, allowedOrigins: readonly string[]): Record<string, string> {
-  const headers: Record<string, string> = {
+function writeCors(origin: string | undefined, allowedOrigins: readonly string[]): CorsHeaders {
+  const headers: CorsHeaders = {
     'access-control-allow-methods': 'PUT, OPTIONS',
     'access-control-allow-headers': 'content-type',
     vary: 'origin',
@@ -44,7 +57,7 @@ function writeCors(origin: string | undefined, allowedOrigins: readonly string[]
   return headers;
 }
 
-function json(status: number, body: unknown, headers: Record<string, string> = OPEN_CORS): ApiReply {
+function json(status: number, body: ApiReply['body'], headers: CorsHeaders = OPEN_CORS): ApiReply {
   return { status, body, headers };
 }
 
@@ -218,7 +231,7 @@ export function days(ctx: ApiContext, search: URLSearchParams): ApiReply {
  */
 export function putConfig(
   ctx: ApiContext,
-  body: unknown,
+  body: JsonValue | undefined,
   origin: string | undefined,
   allowedOrigins: readonly string[],
 ): ApiReply {
@@ -226,25 +239,26 @@ export function putConfig(
   if (origin && !allowedOrigins.includes(origin)) {
     return json(403, { error: `origin not allowed: ${origin}` }, headers);
   }
-  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+  const input = asJsonObject(body);
+  if (input === null) {
     return json(400, { error: 'config must be a JSON object' }, headers);
   }
-  const input = body as Record<string, unknown>;
 
   if (input.limitBytes !== undefined) {
     const value = input.limitBytes;
-    const valid = value === null || (typeof value === 'number' && Number.isSafeInteger(value) && value > 0);
+    const limit = asSafeInteger(value);
+    const valid = value === null || (limit !== null && limit > 0);
     if (!valid) return json(400, { error: 'limitBytes must be a positive integer or null' }, headers);
   }
   if (input.resetDay !== undefined) {
     const value = input.resetDay;
-    const valid =
-      value === null || (typeof value === 'number' && Number.isSafeInteger(value) && value >= 1 && value <= 31);
+    const day = asSafeInteger(value);
+    const valid = value === null || (day !== null && day >= 1 && day <= 31);
     if (!valid) return json(400, { error: 'resetDay must be an integer between 1 and 31 or null' }, headers);
   }
   if (input.agentPatterns !== undefined) {
     const value = input.agentPatterns;
-    const valid = Array.isArray(value) && value.every((entry) => typeof entry === 'string' && entry.length > 0);
+    const valid = Array.isArray(value) && value.every((entry) => isJsonString(entry) && entry.length > 0);
     if (!valid) return json(400, { error: 'agentPatterns must be an array of non-empty strings' }, headers);
   }
 
@@ -274,7 +288,7 @@ export function handleApiRequest(
   ctx: ApiContext,
   method: string,
   url: URL,
-  options: { origin?: string | undefined; body?: unknown; allowedOrigins: readonly string[] },
+  options: { origin?: string | undefined; body?: JsonValue | undefined; allowedOrigins: readonly string[] },
 ): ApiReply | null {
   switch (url.pathname) {
     case '/api/summary':
