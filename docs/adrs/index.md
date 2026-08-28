@@ -112,5 +112,7 @@ likely to collide.
 | Ox Alpha keeps its nested usage buckets, and the disjoint-bucket claim stays open | [0063-ox-alpha-keeps-its-nested-usage-buckets.md](0063-ox-alpha-keeps-its-nested-usage-buckets.md) |
 | Tokens do not aggregate across providers | [0064-tokens-do-not-aggregate-across-providers.md](0064-tokens-do-not-aggregate-across-providers.md) |
 | Cost and pricing_source are resolved at read time, never stored | [0065-cost-is-resolved-at-read-time.md](0065-cost-is-resolved-at-read-time.md) |
+| Retire the fusion plans after the campaign has already landed | [0066-retire-the-fusion-plans-after-the-campaign-landed.md](0066-retire-the-fusion-plans-after-the-campaign-landed.md) |
+| The plan retirement preserves the paused ticket's plan | [0067-the-plan-retirement-preserves-the-paused-tickets-plan.md](0067-the-plan-retirement-preserves-the-paused-tickets-plan.md) |
 | Legacy ADR identifier map | [legacy-map.md](legacy-map.md) |
 <!-- okq:index:end -->
