@@ -6,16 +6,15 @@ import { getChatConfig, getSessions, PERMISSION_MODES } from '../api';
 import { useChatSession, useChatThread } from '../chat-session';
 import { ChatConversation } from '../components/ChatConversation';
 import { LiveIndicator } from '../components/LiveIndicator';
-import { QueryState } from '../components/QueryState';
-import { SessionsSidenav } from '../components/SessionsSidenav';
-import { Skeleton } from '../components/Skeleton';
+import { SessionsShell } from '../components/SessionsShell';
 import { rootRoute } from '../route-root';
 import { useLiveQuery } from '../useLiveQuery';
 import type { NavEntry } from './nav';
 
 /**
  * Sessions, laid out the way a chat client is: the transcripts as a scrolling rail on
- * the left, and the chat you start from here filling the pane beside it.
+ * the left, and the chat you start from here filling the pane beside it — both inside
+ * the shell every sessions view shares.
  *
  * Sending and replying both happen here — the page never follows the session onto its own
  * transcript page. The rail marks it instead, and the transcript is a link away.
@@ -25,7 +24,6 @@ export function SessionsPage() {
   // Live: the server re-lists whenever the sessions dir changes; query is the fallback.
   const live = useLiveQuery('/api/sessions/stream', ['sessions']);
   const { sessionId, chat, pendingPrompt, reset: newChat } = useChatSession();
-  const sessions = query.data?.sessions;
 
   const started = chat !== null || pendingPrompt !== null;
   // The reply carries the thread id, but a turn can run for an hour — ask the proxy directly so
@@ -34,49 +32,15 @@ export function SessionsPage() {
   const threadId = chat?.session.threadId ?? resolved ?? undefined;
 
   return (
-    <section className='sessions-shell'>
-      {/* The rail is the only half that waits; the chat beside it is usable from the
-          first paint, in a grid column the shell already sizes. */}
-      <QueryState isLoading={query.isLoading} error={query.error} skeleton={<SessionsRailSkeleton />}>
-        <SessionsSidenav sessions={sessions ?? []} activeId={threadId} isDrafting={!started} onNewChat={newChat} />
-      </QueryState>
-
-      <div className='sessions-main'>
-        <ChatPane sessionsDir={query.data?.meta.sessionsDir} live={live} threadId={threadId} />
-      </div>
-    </section>
-  );
-}
-
-/** The transcript rail, shaped like the rows `SessionsSidenav` fills it with. */
-function SessionsRailSkeleton({ rows = 9 }: { rows?: number }) {
-  return (
-    <aside className='sessions-nav' aria-hidden>
-      <div className='sessions-nav-body'>
-        <div className='sessions-nav-list'>
-          {Array.from({ length: rows }, (_, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: a fixed-length run of identical loading placeholders — the index is all that distinguishes them
-            <div className='session-row-link' key={i}>
-              <div className='session-row-top'>
-                <span className='session-row-name'>
-                  <Skeleton w={`${72 - (i % 3) * 12}%`} />
-                </span>
-                <span className='session-row-age'>
-                  <Skeleton w='2.5rem' />
-                </span>
-              </div>
-              <span className='session-row-preview'>
-                <Skeleton w='88%' />
-              </span>
-              <div className='session-row-meta'>
-                <Skeleton w='4rem' />
-                <Skeleton w='3.5rem' />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </aside>
+    <SessionsShell
+      isLoading={query.isLoading}
+      error={query.error}
+      sessions={query.data?.sessions ?? []}
+      activeId={threadId}
+      isDrafting={!started}
+      onNewChat={newChat}>
+      <ChatPane sessionsDir={query.data?.meta.sessionsDir} live={live} threadId={threadId} />
+    </SessionsShell>
   );
 }
 

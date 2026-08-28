@@ -12,6 +12,7 @@ Add one with `okq new feature "<title>"`.
 | Title | File |
 |-------|------|
 | Admin dashboard for claude-proxy usage | [admin-dashboard-for-claude-proxy-usage.md](admin-dashboard-for-claude-proxy-usage.md) |
+| Alive View | [alive-view.md](alive-view.md) |
 | Background jobs browser | [background-jobs-browser.md](background-jobs-browser.md) |
 | Bike (codex) — live sanitized usage overview | [codex-bike.md](codex-bike.md) |
 | Car (codex) — durable history, trends, ranges, and model filters | [codex-car.md](codex-car.md) |
