@@ -11,7 +11,6 @@
 |-------|------|
 | Wayfinder — local-markdown tracker | [README.md](README.md) |
 | Decision 004 — Correctness guardrails for serving cached replies | [decision-004-guardrails.md](decision-004-guardrails.md) |
-| Wayfinder — Internet Spend meter | [map-internet-spend.md](map-internet-spend.md) |
 | Map: Skim a thin layer off the top of requests to Anthropic | [map-proxy-skim.md](map-proxy-skim.md) |
 | Map: SQLite as the query substrate over the log files | [map-sqlite-substrate.md](map-sqlite-substrate.md) |
 | monorepo-fusion-09-migrate-corpora | [monorepo-fusion-09-migrate-corpora.md](monorepo-fusion-09-migrate-corpora.md) |
