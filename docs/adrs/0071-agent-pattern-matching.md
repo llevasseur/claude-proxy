@@ -1,11 +1,10 @@
 ---
-type: decision
-title: "Decision internet-spend 004 — Agent patterns match by case-insensitive substring"
+type: adr
+title: Agent patterns match by case-insensitive substring
 description: How agentPatterns classify process names for the approximate share series.
-label: wayfinder:decision
-map: map-internet-spend
-status: proposed
+tags: [net, agents, classification]
 timestamp: 2026-08-25
+scope: net
 decided-by: /dev
 ratified: false
 wayfinder: internet-spend
@@ -13,7 +12,7 @@ grill-round: 6
 needs-human: false
 ---
 
-# Decision internet-spend 004 — Agent patterns match by case-insensitive substring
+# Agent patterns match by case-insensitive substring
 
 > **Status: proposed — NOT ratified by a human.** Proposed by the `/dev`
 > workflow running unattended.

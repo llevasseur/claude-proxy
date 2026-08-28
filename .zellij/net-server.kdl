@@ -1,0 +1,32 @@
+layout {
+    default_tab_template {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        children
+        pane size=2 borderless=true {
+            plugin location="zellij:status-bar"
+        }
+    }
+
+    // `cwd` on the pane is load-bearing, not tidy: scripts/zellij.sh launches
+    // from the monorepo root, where a bare `pnpm server` resolves to claude's
+    // root script. `cwd` picks `stacks/net/package.json` instead. The net stack
+    // has one process — its server, which carries the hourly collector inside
+    // it (decision internet-spend 005) — so this layout opens no proxy or admin
+    // pane.
+    //
+    // Ports stay out of this layout: the pane reads its own environment.
+    // net's default is server 8531 — see .zellij/README.md.
+    tab name="dev" {
+        pane name="server" {
+            cwd "stacks/net"
+            command "pnpm"
+            args "server"
+        }
+    }
+
+    tab name="shell" {
+        pane
+    }
+}

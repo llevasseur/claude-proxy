@@ -15,6 +15,7 @@ import { nav as filtersNav, route as filtersRoute } from './filters';
 import { nav as hooksPluginsNav, route as hooksPluginsRoute } from './hooks-plugins';
 import { route as ideaDetailRoute } from './idea-detail';
 import { nav as ideasNav, route as ideasRoute } from './ideas';
+import { nav as internetNav, route as internetRoute } from './internet';
 import { route as jobDetailRoute } from './job-detail';
 import { nav as jobsNav, route as jobsRoute } from './jobs';
 import { route as memoryDetailRoute } from './memory-detail';
@@ -86,6 +87,7 @@ export const ROUTES = [
   commandRunRoute,
   cliInternalsRoute,
   cliFunctionRoute,
+  internetRoute,
   conceptsRoute,
   conceptDetailRoute,
   adviceRoute,
@@ -118,6 +120,7 @@ const STATIONS = [
   systemPromptNav,
   commandsNav,
   cliInternalsNav,
+  internetNav,
   conceptsNav,
   adviceNav,
   ideasNav,

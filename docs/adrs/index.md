@@ -112,7 +112,14 @@ likely to collide.
 | Ox Alpha keeps its nested usage buckets, and the disjoint-bucket claim stays open | [0063-ox-alpha-keeps-its-nested-usage-buckets.md](0063-ox-alpha-keeps-its-nested-usage-buckets.md) |
 | Tokens do not aggregate across providers | [0064-tokens-do-not-aggregate-across-providers.md](0064-tokens-do-not-aggregate-across-providers.md) |
 | Cost and pricing_source are resolved at read time, never stored | [0065-cost-is-resolved-at-read-time.md](0065-cost-is-resolved-at-read-time.md) |
+| A campaign clears its own lint debt rather than merging red or waiving the rule | [0066-a-campaign-clears-its-own-lint-debt.md](0066-a-campaign-clears-its-own-lint-debt.md) |
 | Retire the fusion plans after the campaign has already landed | [0066-retire-the-fusion-plans-after-the-campaign-landed.md](0066-retire-the-fusion-plans-after-the-campaign-landed.md) |
+| A campaign's decision records live in the ADR bundle, not beside its map | [0067-campaign-decisions-live-in-the-adr-bundle.md](0067-campaign-decisions-live-in-the-adr-bundle.md) |
 | The plan retirement preserves the paused ticket's plan | [0067-the-plan-retirement-preserves-the-paused-tickets-plan.md](0067-the-plan-retirement-preserves-the-paused-tickets-plan.md) |
+| The headline counts wire bytes, stored per interface | [0068-wire-bytes-and-per-interface-schema.md](0068-wire-bytes-and-per-interface-schema.md) |
+| One delta rule, typed discontinuities, gap and quiet split | [0069-delta-gap-and-day-semantics.md](0069-delta-gap-and-day-semantics.md) |
+| Short months clamp to the last day; UTC stored, local resolution | [0070-period-boundaries.md](0070-period-boundaries.md) |
+| Agent patterns match by case-insensitive substring | [0071-agent-pattern-matching.md](0071-agent-pattern-matching.md) |
+| The collector is a timer inside net-server; LaunchAgent out of scope | [0072-collector-residency.md](0072-collector-residency.md) |
 | Legacy ADR identifier map | [legacy-map.md](legacy-map.md) |
 <!-- okq:index:end -->

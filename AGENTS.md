@@ -11,6 +11,12 @@ campaign absorbed them, each still its own set of packages under `stacks/<name>/
 | claude | `stacks/claude/` | `proxy`, `server`, `core`, `admin` | Anthropic / Claude Code |
 | codex | `stacks/codex/` | `proxy`, `server`, `packages/core`, `apps/admin` | OpenAI |
 | ox-alpha | `stacks/ox-alpha/` | `proxy`, `server`, `packages/core`, `apps/admin` | OpenAI Responses |
+| net | `stacks/net/` | `server` | Internet wire-byte spend over its own SQLite corpus; proxies nothing |
+
+The net stack's hourly collector is a timer inside its server process, not a second
+process — a LaunchAgent or any always-on machine-side component is deliberately out of
+scope ([decision internet-spend 005](docs/adrs/0072-collector-residency.md)),
+so data exists only while net-server runs.
 
 Every package is scoped `@agent-proxy/<stack>-<package>` — `@agent-proxy/claude-server`,
 `@agent-proxy/codex-proxy`, `@agent-proxy/ox-core`. Bins are untouched by that scoping.
