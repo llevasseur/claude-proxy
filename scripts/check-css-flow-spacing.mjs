@@ -1,28 +1,19 @@
 #!/usr/bin/env node
 /**
- * The dashboard sheet's flow-spacing gate.
+ * The dashboard sheet's flow-spacing gate: in claude's admin sheet, the gap between a
+ * `.grid` and the `.grid` or `.card` stacked under it rides the *earlier* sibling
+ * (`.grid:has(+ .card) { margin-bottom: … }`), never a `margin-top` on the later one.
  *
- * One invariant, and it exists because breaking it is silent. The gap between the
- * page-level blocks a route composes from — `.grid` and `.card` — is declared in
- * `@layer layout`, and `stacks/claude/admin/src/styles.css` declares `components`
- * after `layout`. So a component sheet wins that cascade outright, and a `margin`
- * shorthand written for its bottom value alone resets the top one on the way past:
- * `margin: 0 0 var(--space-10)` on `.usage-note` zeroed the `margin-top` a card
- * stacked under a grid used to get, and the Overview's internet-spend card rendered
- * flush against the usage meters. Nothing failed, nothing warned, and the sheet read
- * correctly in both files.
+ * `styles.css` declares `components` after `layout`, so a component sheet's `margin`
+ * shorthand written for its bottom value alone silently zeroes a layout `margin-top`
+ * — `.usage-note`'s `margin: 0 0 var(--space-10)` left the Overview's internet-spend
+ * card flush against the usage meters, with nothing failing or warning. No component
+ * sheet styles `.grid`, so on the earlier sibling the gap is out of their reach.
  *
- * The fix that holds is structural: spacing between two siblings rides the *earlier*
- * one, which is a `.grid` no component sheet styles. This script keeps it there — it
- * fails when a sibling-combinator rule sets a top margin on `.card` or `.grid`, which
- * is the shape a component margin can cancel.
- *
- * Scope is claude's sheet alone, deliberately. codex's `layout/card.css` is a
- * byte-identical mirror carried in by fusion, and rewriting its spacing would be the
- * visual change ADR 0050's boundary forbids; a sibling opting in is its own ticket.
- * Same-class runs like `.nav-group + .nav-group` are untouched by the rule: their
- * subject is neither `.card` nor `.grid`, and no component sheet sets a margin on
- * them.
+ * claude's sheet only: codex's `layout/card.css` is a mirror fusion carried in, and
+ * rewriting its spacing is the visual change ADR 0050's boundary forbids. Same-class
+ * runs like `.nav-group + .nav-group` are outside the rule — their subject is neither
+ * class.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
@@ -30,9 +21,9 @@ import { join, relative, resolve } from 'node:path';
 const root = resolve(import.meta.dirname, '..');
 const sheetRoot = join(root, 'stacks/claude/admin/src/styles');
 
-/** The layout classes a page's blocks are composed from, and whose spacing this guards. */
+/** The layout classes a page's blocks are composed from. */
 const FLOW_CLASSES = ['.card', '.grid'];
-/** Longhands and shorthands that can put a top margin on the later sibling. */
+/** Longhands and shorthands that can set a top margin. */
 const TOP_MARGIN = /^\s*(margin-top|margin-block-start|margin-block|margin)\s*:/;
 
 const errors = [];
@@ -48,10 +39,8 @@ function cssFiles(directory) {
 }
 
 /**
- * The last compound of a selector — what the rule actually styles. `.grid + .card`
- * styles the card, so the subject is `.card`; `.grid:has(+ .card)` styles the grid,
- * and its `:has()` argument is stripped before the split so the card inside it is not
- * mistaken for the subject.
+ * The last compound of a selector — what the rule styles. A `:has()` argument is
+ * stripped first, so the `.card` in `.grid:has(+ .card)` is not read as the subject.
  */
 function subjectOf(selector) {
   const withoutRelative = selector.replace(/:has\([^)]*\)/g, '');
@@ -68,7 +57,7 @@ for (const file of cssFiles(sheetRoot)) {
   const lines = readFileSync(file, 'utf8').split('\n');
   // Selector preludes, innermost last. An at-rule (`@layer`, `@container`, `@media`)
   // pushes an empty prelude, so a declaration inside one is attributed to the rule
-  // around it rather than to the at-rule.
+  // around it.
   const open = [];
   let prelude = '';
   let inComment = false;
@@ -89,8 +78,7 @@ for (const file of cssFiles(sheetRoot)) {
     }
 
     const selector = open.at(-1) ?? '';
-    // A selector list is checked part by part: one offending part in a list of five is
-    // still the bug, and reading only the last part is how it would be missed.
+    // Part by part: one offending entry in a list of five is still the bug.
     const offending = selector
       .split(',')
       .map((part) => part.trim())
