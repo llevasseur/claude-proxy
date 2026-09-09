@@ -248,11 +248,15 @@
   .grid.usage {
     grid-template-columns: repeat(auto-fit, minmax(272px, 1fr));
   }
+  /* Type and tone only. The margin this used to carry — `margin: 0 0 var(--space-10)`
+   * — restated `.card`'s own bottom margin and, through the shorthand, zeroed the top
+   * one `@layer layout` gives a card stacked under a grid, so this note rendered flush
+   * against the meters above it. It also overrode `.grid > .card`'s zero, which is how
+   * the same note double-spaced inside a grid. Spacing belongs to the layout layer. */
   .usage-note {
     font-size: var(--text-4);
     line-height: 1.5;
     color: var(--muted);
-    margin: 0 0 var(--space-10);
   }
 
   /* stat card: mini chart + clickable drill-down + hover popover */

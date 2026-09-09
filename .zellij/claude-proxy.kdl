@@ -29,6 +29,26 @@ layout {
                     command "pnpm"
                     args "admin"
                 }
+                // net's server, in claude's session because claude's admin is what
+                // reads it: the Overview's internet-spend card and the `/internet`
+                // page fetch net-server at 8531, and with that process down the card
+                // renders "net-server unreachable" — and the hourly collector, which
+                // lives inside this same process (decision internet-spend 005), takes
+                // no samples either, so the gap outlives the session. This pane is the
+                // one cross-stack pane in any layout, and it is a consumer pane rather
+                // than net's own session: `.zellij/net-server.kdl` still opens net
+                // alone, for work on the net stack itself.
+                //
+                // `cwd` is load-bearing, exactly as it is in the sibling layouts: this
+                // layout launches from the monorepo root, where a bare `pnpm server`
+                // resolves to the *root* script, which is claude's. It pins no port —
+                // net-server resolves its own default 8531, which collides with
+                // nothing.
+                pane name="net-server" {
+                    cwd "stacks/net"
+                    command "pnpm"
+                    args "server"
+                }
             }
         }
     }

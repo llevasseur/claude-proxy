@@ -136,6 +136,23 @@ Nothing about that state reaches the rest of the page. The claude-server queries
 the allowance meters, the stat tiles, and the two plots are untouched by it — the
 Overview route gained one component and no change to any existing data path.
 
+**A claude dev session now starts net-server for you**, so the note is a real signal
+rather than the default state: `.zellij/claude-proxy.kdl` carries a fourth pane running
+net's server with `cwd "stacks/net"`, on the reasoning that claude's admin is that
+server's only reader and every hour it is down is an hour missing from the corpus for good
+([ADR 0072](../adrs/0072-collector-residency.md)). Seeing the note in a `pnpm zellij`
+session therefore means that pane died, not that nothing was launched — read the
+`net-server` pane. `.zellij/net-server.kdl` still opens net alone for work on the net
+stack itself.
+
+The note's own spacing is the layout layer's, not this component's. `.usage-note` sets
+type and tone only: it used to carry `margin: 0 0 var(--space-10)`, and because
+`styles.css` declares `components` after `layout`, that shorthand's implicit zero top
+margin beat the gap `@layer layout` gives a card stacked under a grid — the card rendered
+flush against the meters above it. The gap now rides the earlier sibling
+(`.grid:has(+ .card)`), which no component sheet styles, and
+`scripts/check-css-flow-spacing.mjs` fails the build if it moves back.
+
 ## Where it lives
 
 - `stacks/claude/admin/src/components/InternetSpendCard.tsx` — the section: the three
