@@ -1,15 +1,10 @@
 #!/usr/bin/env bash
 #
-# Boot claude's dashboard the way a verification run needs it. One foreground command
-# brings up both processes and does not return until they exit. `/verify` reads this
-# command out of `scripts/bootstrap-worktree.sh --print-verify-contract` and runs it in
-# the background, so two rules hold here. It streams both children's output on this
-# stdout, because the `listening on ...` lines are how the real bound port is read back.
-# And it takes its children down with it.
-#
-# Order matters. The server comes up first and is polled until `/api/health` answers.
-# Only then does Vite start. That ordering is what lets the contract name a single
-# health URL, since the admin origin answering implies the API behind it already does.
+# Boots claude's dashboard as one foreground command: the server first, polled until
+# `/api/health` answers, then Vite, holding the foreground until both exit. That
+# ordering is what lets the run contract name a single health URL, since :5173 answering
+# implies :8788 already did. Both children's output streams on this stdout, so the
+# `listening on ...` lines stay readable as the real bound port.
 #
 # Usage: bash scripts/dev-boot.sh   (from anywhere inside the checkout)
 
@@ -18,9 +13,8 @@ set -euo pipefail
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "${REPO_ROOT}"
 
-# ADR 0050's resolution order, mirrored so the health probe below aims at whichever port
-# the server will actually take. `strictPort` pins Vite, so its port is not negotiable
-# and reading an override would misreport it.
+# ADR 0050's resolution order, so the probe below aims at the port the server will take.
+# `strictPort` pins Vite, so reading an override for it would misreport.
 SERVER_PORT="${CLAUDE_SERVER_PORT:-${PORT:-8788}}"
 ADMIN_PORT=5173
 SERVER_HEALTH="http://127.0.0.1:${SERVER_PORT}/api/health"
@@ -28,10 +22,9 @@ ADMIN_URL="http://127.0.0.1:${ADMIN_PORT}/"
 
 PIDS=()
 
-# pnpm sits between this script and the process that holds the port, so killing the pid
-# it reports orphans `tsx` and `vite`. An orphan rooted in a worktree keeps writing to
-# the shared `logs/` symlink after the directory is gone. Kill the children first, then
-# the wrapper.
+# pnpm sits between this script and the process holding the port, so killing the pid it
+# reports orphans `tsx` and `vite`, and an orphan rooted in a worktree keeps writing to
+# the shared `logs/` symlink after the directory is gone. Children first, wrapper second.
 cleanup() {
   local pid
   for pid in "${PIDS[@]:-}"; do
@@ -43,8 +36,8 @@ cleanup() {
 
 trap cleanup EXIT HUP INT TERM
 
-# Poll rather than sleep a fixed span. A cold `tsx watch` over this corpus is slow enough
-# that any constant is either a stall or a flake.
+# A cold `tsx watch` over this corpus is slow enough that any fixed sleep is either a
+# stall or a flake.
 wait_for() {
   local url="$1" what="$2" deadline=$((SECONDS + 120))
   while [ "${SECONDS}" -lt "${deadline}" ]; do
@@ -70,6 +63,6 @@ wait_for "${ADMIN_URL}" "admin"
 
 echo "[dev-boot] ready: ${ADMIN_URL}"
 
-# Hold the foreground for as long as either child lives, so the caller's background job
-# tracks the app rather than this script's setup.
+# Hold the foreground while either child lives, so the caller's background job tracks the
+# app rather than this script's setup.
 wait
