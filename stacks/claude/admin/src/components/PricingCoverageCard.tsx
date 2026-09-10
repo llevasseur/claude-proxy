@@ -129,8 +129,7 @@ export function PricingCoverageCard({ date }: { date?: string }) {
       </div>
       <div className='coverage-readout'>
         <span className='usage-meter-value'>
-          {fmtPct(pricedShare * 100, digits)}
-          <span className='usage-meter-unit'>priced</span>
+          {fmtPct(pricedShare * 100, digits)} <span className='usage-meter-unit'>priced</span>
         </span>
       </div>
       <div className='usage-meter-foot'>

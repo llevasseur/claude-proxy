@@ -107,6 +107,14 @@
    * segments. A table rate is the meter's own real-input teal; a fallback rate is
    * an estimate we stand behind, in solid amber; unpriced is that same amber with
    * the fill taken out, so the bar and the pill above say "hollow" the same way. */
+  /* `.usage-meter` sets `margin: 0`, which is right inside `.grid.usage` where the
+   grid spaces the meters, and wrong for a meter standing alone as a page-level
+   card — it cancels the bottom margin the layout layer gives one, leaving this
+   card flush against the plot below it. Restored on the earlier sibling, in
+   longhand, exactly as `check:css` requires. */
+  .coverage {
+    margin-bottom: var(--space-10);
+  }
   .coverage-bar {
     display: flex;
   }

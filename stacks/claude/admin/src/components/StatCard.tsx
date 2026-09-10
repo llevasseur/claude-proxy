@@ -147,7 +147,9 @@ export function StatCard({
           <span className={`delta ${good}`}>{deltaLabel(deltaPct)}</span>
         )}
       </div>
-      {tone !== null && <div className='stat-baseline'>{baselineText(tone, baseline, deltaPct)}</div>}
+      {/* Suppressed with the delta, and for the same reason: "up from $5.40" asserts
+          a direction for a number the tile is refusing to show. */}
+      {!unavailable && tone !== null && <div className='stat-baseline'>{baselineText(tone, baseline, deltaPct)}</div>}
       {spark && spark.points.length > 0 && (
         <>
           <Sparkline

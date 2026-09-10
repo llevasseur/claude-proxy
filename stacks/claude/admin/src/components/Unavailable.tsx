@@ -36,6 +36,30 @@ export function Unavailable({ notice, size = 'sm', alignEnd = false }: Unavailab
   const classes = ['unavailable', `sev-${notice.severity}`];
   if (size === 'lg') classes.push('size-lg');
   if (alignEnd) classes.push('align-end');
+  const label = (
+    <>
+      <span className='sr-only'>{notice.kind === 'cost' ? 'Cost unavailable: ' : 'Data unavailable: '}</span>
+      {notice.label}
+    </>
+  );
+
+  // In a stat headline the pill is **not** interactive, and that is a constraint
+  // rather than a preference: `StatCard` wraps its body in a `Link` whenever the
+  // tile names a metric, and every metric does — so a button here would be
+  // interactive content nested in an anchor. Invalid HTML, a second tab stop on
+  // every money tile, and a click on the mark navigating away instead of
+  // explaining itself. The sentence is not lost: the tile carries it on its own
+  // sub line, and `title` gives it to a pointer the way `RateStamp` beside it
+  // already does.
+  if (size === 'lg') {
+    return (
+      <span className={classes.join(' ')} data-code={notice.code}>
+        <span className='unavailable-pill' title={notice.detail}>
+          {label}
+        </span>
+      </span>
+    );
+  }
 
   return (
     <span className={classes.join(' ')} data-code={notice.code}>
@@ -44,8 +68,7 @@ export function Unavailable({ notice, size = 'sm', alignEnd = false }: Unavailab
           element, so a later ticket can swap this for a link to the pricing page
           without touching the CSS. */}
       <button type='button' className='unavailable-pill' aria-describedby={id}>
-        <span className='sr-only'>{notice.kind === 'cost' ? 'Cost unavailable: ' : 'Data unavailable: '}</span>
-        {notice.label}
+        {label}
       </button>
       <span id={id} role='tooltip' className='hint-bubble unavailable-bubble'>
         {notice.detail}
