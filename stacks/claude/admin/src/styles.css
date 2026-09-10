@@ -52,3 +52,5 @@
 @import "./styles/components/timeline.css";
 @import "./styles/components/skeleton.css";
 @import "./styles/components/pr-tree.css";
+/* After `skeleton.css`: the rate-coverage bar is a `.stackbar`, declared there. */
+@import "./styles/components/pricing.css";

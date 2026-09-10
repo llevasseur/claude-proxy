@@ -17,6 +17,7 @@ import { InternetSpendCard } from '../components/InternetSpendCard';
 import { type ModelOption, shortModelName } from '../components/ModelPicker';
 import { PerRequestCard, PerRequestSkeleton } from '../components/PerRequestCard';
 import { QueryState } from '../components/QueryState';
+import { RateCoverageCard } from '../components/RateCoverageCard';
 import { Skeleton, SkeletonStats, SkeletonText } from '../components/Skeleton';
 import { StatCard } from '../components/StatCard';
 import { UsageMeter } from '../components/UsageMeter';
@@ -72,6 +73,10 @@ export function OverviewPage() {
         />
 
         <UsageSection data={usage.data} isLoading={usage.isLoading} error={usage.error} />
+        {/* What share of spend rests on a blanket rate rather than a published row.
+            Its own query, resolved server-side on every read and cached for no time
+            here, so an operator's rate edit moves it immediately (ADR 0065). */}
+        <RateCoverageCard />
         {/* Every net-server read is sealed inside this card — its own queries, its own
             failures — so nothing about it reaches the meters above or the sections below. */}
         <InternetSpendCard />
