@@ -255,9 +255,8 @@ export class UsageDatabase {
           throw new Error(`record ${sidecar.recordId} conflicts with ${existing.filename}`);
         }
       } else {
-        // The four provenance columns are written here and only here: a projection
-        // of the sidecar this call already holds parsed, materialised once so no
-        // read path has to reconstitute it from the blob.
+        // The four provenance columns are written here and only here, as a
+        // projection of the already-parsed sidecar.
         this.database
           .prepare(
             `INSERT INTO usage_records
@@ -308,10 +307,8 @@ export class UsageDatabase {
     limit: number | null,
     offset: number,
   ): PaginatedHistoryRecords {
-    // `model` is selected as a column and both filtered and rendered from there.
-    // The blob is still parsed — it is the source of truth for everything else this
-    // view shows — but the record's *identity* comes from the materialised column,
-    // which is the outcome ADR 0061 requires of every read path.
+    // `model` comes from the column, not the blob — the outcome ADR 0061 requires
+    // of every read path. The blob still supplies everything else this view shows.
     // SAFETY: the two selected columns are exactly the two `ModelJsonRow` declares.
     const rows = this.database
       .prepare('SELECT model, sidecar_json FROM usage_records ORDER BY event_timestamp DESC, record_id ASC')
