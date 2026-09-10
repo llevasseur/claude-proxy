@@ -136,7 +136,6 @@ Taken before charting; re-measure rather than trusting these if a ticket turns o
 
 | # | Task | Plan | Branch | Status | Note |
 |---|------|------|--------|--------|------|
-| 03 | claude-migration-23 | [provider-seam-03-claude-migration-23](provider-seam-03-claude-migration-23.md) | `task/provider-seam-03-claude-migration-23` | in-progress | |
 | 06 | pricing-table-and-read-time-cost | [provider-seam-06-pricing-table-and-read-time-cost](provider-seam-06-pricing-table-and-read-time-cost.md) | `task/provider-seam-06-pricing-table-and-read-time-cost` | todo | |
 | 07 | typed-store-absence-envelope | [provider-seam-07-typed-store-absence-envelope](provider-seam-07-typed-store-absence-envelope.md) | `task/provider-seam-07-typed-store-absence-envelope` | todo | |
 | 08 | provider-scoped-routes-and-fanout | [provider-seam-08-provider-scoped-routes-and-fanout](provider-seam-08-provider-scoped-routes-and-fanout.md) | `task/provider-seam-08-provider-scoped-routes-and-fanout` | todo | |
@@ -229,6 +228,53 @@ A gate is a commit on `wayfinder/provider-seam` with a green verify and an hones
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 03 — claude-migration-23 · 2026-09-10 · [#323](https://github.com/llevasseur/claude-proxy/pull/323)
+
+claude's store went to schema 23, stamping each record with what produced it. **The plan
+asked for four columns and the migration adds three**, because `model` is already one:
+`request.model` has been `NOT NULL` since slice 1, so re-adding it would fail with
+`duplicate column name` and a second model column would give one record two answers. The
+other three — `provider`, `harness`, `adapter_version` — are new and nullable, since SQLite
+cannot add a `NOT NULL` column to a populated table without a default and a default is
+precisely the guess the plan refuses.
+
+**`cost` and `pricing_source` needed no work, and that is the finding worth keeping.**
+`request` has never carried a cost column, so ADR 0065 was already satisfied structurally
+and ADR 0038's "reprice at today's rates" already holds with no repricing code at all:
+nothing derived is frozen onto a row, so every read prices against today's catalogue. The
+rebuild path 0038 originally leaned on stays unbuilt.
+
+The backfill writes `anthropic` and `claude-code` as **two independent facts about the
+capturing adapter**, never one derived from the other (ADR 0040) — the same v1 resolution
+`readSidecar` performs, applied in bulk. **`adapter_version` is left null on purpose**:
+those rows predate the adapter contract, so any number would claim a provenance they do not
+have, which is the plan's "explicitly unknown rather than guessing a default".
+
+`backUpBeforeMigration23` writes `logs/backups/pre-migration-23-<stamp>.jsonl` before the
+ladder runs, aside-and-renamed, holding each row's id, `body_derived` and skim text. **It
+has no reader anywhere in the repository, deliberately** — a restore path would make it
+load-bearing and would be the forbidden rebuild path. It is skipped for a store already at
+23 and for one with nothing to lose.
+
+Ingest fills the three columns going forward. Review changed how: `resolveRecordStamp`
+originally re-checked registry membership itself, and now calls `readSidecar` directly,
+catching `SidecarValidationError` and discarding the placeholder version a v1 file never
+stated. Ten tests cover it, including a column-by-column comparison against a
+pre-migration snapshot and an assertion that the database file's **inode and birthtime are
+unchanged** across the migration — the one claim a delete-and-rebuild cannot fake.
+
+**Two follow-ups, deliberately not taken here.** Core's `AuditSidecar` in
+`stacks/claude/core/src/types.ts` still does not carry v2's provenance header, which is why
+ingest reads those fields off the raw parsed object; core was outside this ticket's lane.
+And a pre-23 row ingested from a v2 sidecar keeps `adapter_version` null, because the
+insert's `ON CONFLICT DO UPDATE` does not heal it.
+
+**One environmental finding worth recording:** `stacks/claude/logs` does not exist in a
+fresh worktree, so claude's server opens no database there and degrades to file-scan reads.
+The stack's `.env` resolves `AUDIT_DIR` stack-relative under ADR 0054 while
+`scripts/bootstrap-worktree.sh` links only `logs/` at the repository root. Pre-existing, and
+it means closed-loop verification of any store change cannot run in a worktree.
 
 ### 05 — ox-store-repair-and-migration · 2026-09-10 · [#321](https://github.com/llevasseur/claude-proxy/pull/321)
 
