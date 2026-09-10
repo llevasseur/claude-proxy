@@ -473,6 +473,19 @@ export const API_ROUTES = [
     cors: 'origin',
     params: [],
   },
+  // What share of this proxy's corpus can be priced, and why the rest cannot.
+  // Scoped `anthropic` rather than `agnostic` because it counts *this* store's
+  // records against *this* proxy's rate table; each provider answers its own.
+  {
+    path: '/api/pricing/coverage',
+    provider: 'anthropic',
+    methods: ['GET'],
+    kind: 'json',
+    cors: 'open',
+    // `date` scopes a second tally to one reporting day, for a surface showing
+    // that day's total; the corpus tally is returned either way.
+    params: ['date'],
+  },
   { path: '/api/skim', provider: 'anthropic', methods: ['GET'], kind: 'json', cors: 'open', params: ['date'] },
   { path: '/api/skim/trend', provider: 'anthropic', methods: ['GET'], kind: 'json', cors: 'open', params: ['days'] },
   { path: '/api/withheld', provider: 'anthropic', methods: ['GET'], kind: 'json', cors: 'open', params: ['days'] },

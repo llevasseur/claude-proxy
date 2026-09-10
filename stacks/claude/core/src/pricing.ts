@@ -252,3 +252,43 @@ export function aggregateCost(results: readonly CostResult[]): CostResult {
     unavailableReason: null,
   };
 }
+
+/**
+ * Whether this reason is the *unattributed record* case rather than an unpriced
+ * model.
+ *
+ * `rateRowFor` reports both as `unknown-model`, and it is right to — neither has
+ * a row. But they are different facts and they are closed differently. A named
+ * model with no row is a gap in the rate table, and ADR 0044's "every model gets
+ * a price row" says an operator closes it by adding one. A record naming no
+ * model at all cannot be closed that way, because no row would ever match it;
+ * `rateRowFor` withholds the declared fallback from it for the same reason,
+ * since "not in the table" and "does not say what produced it" are different
+ * claims and pricing the second would put a number on a record nothing is known
+ * about.
+ */
+export function isUnattributedRecord(reason: CostUnavailableReason): boolean {
+  return reason.code === 'unknown-model' && reason.model.trim() === '';
+}
+
+/**
+ * One sentence a cost surface can render, derived from the reason rather than
+ * composed at each call site.
+ *
+ * The counterpart to `describeProviderUnavailable` in `store-absence.ts`, and
+ * deliberately shaped like it: the page, the aggregate's explanation and any
+ * badge that summarises the state all say the same thing about the same state,
+ * so the two kinds of absence read as one vocabulary rather than two.
+ */
+export function describeCostUnavailable(reason: CostUnavailableReason): string {
+  switch (reason.code) {
+    case 'unknown-model':
+      return isUnattributedRecord(reason)
+        ? 'this record does not say which model produced it, so no rate can apply'
+        : `${reason.model} has no rate row, and this proxy declares no fallback`;
+    case 'missing-category-price':
+      return `${reason.model} consumed ${reason.category} tokens and has no usable ${reason.category} rate`;
+    case 'aggregate-incomplete':
+      return `at least one record in this total is unpriced (${reason.detail}), so there is no total`;
+  }
+}

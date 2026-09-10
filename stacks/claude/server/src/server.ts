@@ -31,6 +31,7 @@ import {
   parseSuggestionStatusUpdates,
   type SuggestionRecurrence,
   type SuggestionStatus,
+  storeUnreadable,
 } from '@agent-proxy/claude-core';
 import {
   applyIdeaArea,
@@ -118,6 +119,7 @@ import { RemoteConceptStoreError, remoteConceptStore } from './concepts-remote.j
 import { resolveServerPort } from './config.js';
 import { memoiseByCorpus } from './corpus-memo.js';
 import { resolveDbPath } from './db/open.js';
+import { readPricingCoverage } from './db/pricing-coverage-store.js';
 import { localReadFailureReason } from './db/provider-fanout.js';
 import { recordRouteObservation } from './db/route-observation-store.js';
 import {
@@ -126,6 +128,7 @@ import {
   shadowSource,
   startSubstrate,
   stopSubstrate,
+  substrateDb,
   substrateSource,
 } from './db/runtime.js';
 import { ALL_DAYS, resolveAllDays, type SidecarSource } from './db/source.js';
@@ -1941,6 +1944,22 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
   // Ends the session: "New chat" evicts it rather than leaving it resident forever.
   '/api/chat/sessions/end': async ({ req, res }) => {
     await servePost(req, res, async (body) => endChat({ sessionId: body.sessionId }));
+  },
+  // Pricing coverage has no file behind it: the rates live only in the database,
+  // so there is no scan to fall back to. A closed substrate therefore answers
+  // with a typed reason rather than with an empty table, which would report "no
+  // traffic is unpriced" when the truth is that nothing could be checked — the
+  // absence-as-measurement ADR 0060 refuses. 503 carrying `unavailableReason` is
+  // the shape the dashboard's fan-out already parses.
+  '/api/pricing/coverage': async ({ res, date }) => {
+    const db = substrateDb();
+    if (db === null) {
+      send(res, 503, {
+        unavailableReason: storeUnreadable('anthropic', 'unknown', 'the substrate is not open on this server'),
+      });
+      return;
+    }
+    send(res, 200, readPricingCoverage(db, { date }));
   },
   '/api/skim': async ({ res, date }) => {
     const now = new Date();

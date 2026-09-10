@@ -40,6 +40,7 @@ export * from './system-prompt.js';
 export * from './time.js';
 export * from './trends.js';
 export * from './types.js';
+export * from './unavailable-notice.js';
 export * from './usage-limits.js';
 export * from './wire-prompt.js';
 export * from './withheld.js';

@@ -258,10 +258,32 @@ export function summarizePricing(records: readonly PricedRecord[]): PricingSumma
     else if (record.pricingSource.kind === 'table') fromTable += 1;
     else fromFallback += 1;
   }
-  const total = records.length;
+  return pricingSummaryFrom({ fromTable, fromFallback, unpriced });
+}
+
+/**
+ * The same summary from counts already taken.
+ *
+ * A caller that has grouped its corpus — counting how many records fall to each
+ * outcome rather than holding one {@link PricedRecord} per record — has the same
+ * three numbers {@link summarizePricing} would derive, and materializing a
+ * record per row purely to be counted again is work with no answer in it.
+ *
+ * This exists so that caller does not restate the share formula. `fallbackShare`
+ * has one subtlety worth not duplicating: it is the fallback's share **of what
+ * was priced**, not of the corpus, and it is `null` rather than `0` for an empty
+ * set, because a share of nothing is undefined. Two copies of that rule would
+ * eventually disagree, and the disagreement would be invisible.
+ */
+export function pricingSummaryFrom(counts: {
+  readonly fromTable: number;
+  readonly fromFallback: number;
+  readonly unpriced: number;
+}): PricingSummary {
+  const { fromTable, fromFallback, unpriced } = counts;
   const priced = fromTable + fromFallback;
   return {
-    total,
+    total: priced + unpriced,
     fromTable,
     fromFallback,
     unpriced,

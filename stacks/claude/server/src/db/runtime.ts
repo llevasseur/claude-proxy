@@ -35,6 +35,26 @@ export function substrateSource(): SidecarSource | null {
 }
 
 /**
+ * The running substrate's database, or `null` when it never opened.
+ *
+ * `readSource()` above is the accessor almost every route wants, because a route
+ * that reads *sidecars* has a complete answer either way — the substrate is a
+ * view over files that never went anywhere, so the file scan is a fallback
+ * rather than a degradation.
+ *
+ * This one is for the routes that read a table with **no file behind it**. The
+ * rate tables are the case: an operator's rates live only in the database, so a
+ * route over them cannot fall back to a scan and must be able to say the
+ * substrate is not open rather than answer as though the tables were empty —
+ * which would be the "absence rendered as a real measurement" that
+ * [ADR 0060](../../../../../docs/adrs/0060-a-stores-absence-is-typed.md) refuses.
+ * Returning `null` rather than throwing is what lets the caller say so.
+ */
+export function substrateDb(): DatabaseSync | null {
+  return handle?.db ?? null;
+}
+
+/**
  * The reversal, in one flag: on unless `DB_READS=0`, which puts every route back
  * on the directory scan. There is no migration to undo — the log files were
  * never touched, so the file scan still answers every route.
