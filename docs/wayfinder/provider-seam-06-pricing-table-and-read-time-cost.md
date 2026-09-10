@@ -2,7 +2,7 @@
 
 **Wayfinder:** `provider-seam`
 **Branch:** `task/provider-seam-06-pricing-table-and-read-time-cost`
-**Status:** active
+**Status:** done · 2026-09-10
 
 Depends on ticket 03. This is the data side only — the CRUD page is ticket 14.
 

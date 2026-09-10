@@ -136,7 +136,6 @@ Taken before charting; re-measure rather than trusting these if a ticket turns o
 
 | # | Task | Plan | Branch | Status | Note |
 |---|------|------|--------|--------|------|
-| 06 | pricing-table-and-read-time-cost | [provider-seam-06-pricing-table-and-read-time-cost](provider-seam-06-pricing-table-and-read-time-cost.md) | `task/provider-seam-06-pricing-table-and-read-time-cost` | in-progress | |
 | 07 | typed-store-absence-envelope | [provider-seam-07-typed-store-absence-envelope](provider-seam-07-typed-store-absence-envelope.md) | `task/provider-seam-07-typed-store-absence-envelope` | todo | |
 | 08 | provider-scoped-routes-and-fanout | [provider-seam-08-provider-scoped-routes-and-fanout](provider-seam-08-provider-scoped-routes-and-fanout.md) | `task/provider-seam-08-provider-scoped-routes-and-fanout` | todo | |
 | 13 | cross-provider-token-series | [provider-seam-13-cross-provider-token-series](provider-seam-13-cross-provider-token-series.md) | `task/provider-seam-13-cross-provider-token-series` | todo | |
@@ -228,6 +227,58 @@ A gate is a commit on `wayfinder/provider-seam` with a green verify and an hones
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 06 — pricing-table-and-read-time-cost · 2026-09-10 · [#324](https://github.com/llevasseur/claude-proxy/pull/324)
+
+claude's store went to schema 24 with two rate tables — `model_rate` and
+`proxy_fallback_rate` — and cost is resolved against them on every read, stored nowhere.
+Neither table carries a `valid_from` or any rate history (ADR 0044, no effective dating),
+and no `cost` or `pricing_source` column was added to the record or rate tables (ADR 0065).
+
+**The split across core and server is what the deterministic-core rule forced, and it turned
+out to be the right seam anyway.** `stacks/claude/core/src/rate-table.ts` holds the *rules*
+— row selection, the stamp, the typed unknown — and the server holds the *rates*. The
+arithmetic was not re-implemented: once a row is selected the module hands off to ticket
+12's `resolveCost`, so ADR 0020's "only a consumed bucket needs a usable rate" lives in
+exactly one place instead of two that drift.
+
+**What the plan under-specified was the keying, and it is the load-bearing difference.**
+`pricing.ts`'s `MODEL_PRICES` matches a model to a *family* by substring, which is right for
+a hand-maintained constant and wrong for an operator-edited dimension table: under substring
+matching, adding a row silently reprices its neighbours. So the rate table matches the model
+exactly, and `claude-opus-5-20260101` deliberately does **not** hit a row keyed
+`claude-opus-5`. A test pins that.
+
+**Three states, kept distinct.** A model with its own row is stamped `table`; one without,
+where the proxy declares a fallback, is priced and stamped `fallback:claude` — a normal
+state, not an error; one without either is cost `null` with a typed `unknown-model`, never
+`0`. A rate of `0` is a real price for a free bucket and stays priced, while a `null` rate on
+a bucket that *consumed* tokens sinks the cost with `missing-category-price`.
+
+**One judgement the plan did not cover.** A record with **no model recorded at all** resolves
+unknown even where a fallback is declared. "Not in the table" and "this record does not say
+what produced it" are different facts, and pricing the second would put a number on a record
+nothing is known about.
+
+The migration seeds a row per distinct model already in `request` at its family's catalogue
+rate, reading the corpus rather than shipping a guessed list, with `INSERT OR IGNORE` so
+re-reaching the rung never overwrites an operator edit. Every mutation touches one row of one
+rate table and never opens `request` — a test edits a rate, watches a total move `1.000000` →
+`7.000000`, and compares every column of every record against a prior snapshot. Deleting a
+row leaves nothing dangling, which is why ADR 0065 chose it over a foreign key.
+
+**Two deviations worth recording.** Two version assertions in
+`migration-23-record-stamp.test.ts` named `23` as the ladder's destination and now read
+`SCHEMA_VERSION`, since the ladder runs to 24. And a "no cost column anywhere" sweep was
+narrowed to the record and rate tables after it caught `command_run_step.cost` — a per-step
+analytics figure predating this campaign that ADR 0065 does not govern; widening the
+assertion would have failed on another tier's design rather than enforcing 0065.
+
+**App verification came back `unverified`, not green.** The server booted and answered
+`/api/health`, so migration 24 does not break boot, but Vite could not bind `5173` (the
+pre-existing three-admins collision) and the run contract's health URL is fixed there.
+Nothing in this diff is reachable from a served surface yet — tickets 14, 15 and 16 render
+it. All nine gates green.
 
 ### 03 — claude-migration-23 · 2026-09-10 · [#323](https://github.com/llevasseur/claude-proxy/pull/323)
 
