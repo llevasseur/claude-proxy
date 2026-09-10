@@ -139,7 +139,7 @@ Taken before charting; re-measure rather than trusting these if a ticket turns o
 | 13 | cross-provider-token-series | [provider-seam-13-cross-provider-token-series](provider-seam-13-cross-provider-token-series.md) | `task/provider-seam-13-cross-provider-token-series` | todo | |
 | 14 | ui-pricing-crud-page | [provider-seam-14-ui-pricing-crud-page](provider-seam-14-ui-pricing-crud-page.md) | `task/provider-seam-14-ui-pricing-crud-page` | in-progress | |
 | 15 | ui-unknown-cost-treatment | [provider-seam-15-ui-unknown-cost-treatment](provider-seam-15-ui-unknown-cost-treatment.md) | `task/provider-seam-15-ui-unknown-cost-treatment` | in-progress | |
-| 16 | ui-fallback-stamp | [provider-seam-16-ui-fallback-stamp](provider-seam-16-ui-fallback-stamp.md) | `task/provider-seam-16-ui-fallback-stamp` | todo | |
+| 16 | ui-fallback-stamp | [provider-seam-16-ui-fallback-stamp](provider-seam-16-ui-fallback-stamp.md) | `task/provider-seam-16-ui-fallback-stamp` | in-progress | |
 | 17 | ui-interrupted-resumed | [provider-seam-17-ui-interrupted-resumed](provider-seam-17-ui-interrupted-resumed.md) | `task/provider-seam-17-ui-interrupted-resumed` | todo | |
 | 18 | docs-feature-and-spec | [provider-seam-18-docs-feature-and-spec](provider-seam-18-docs-feature-and-spec.md) | `task/provider-seam-18-docs-feature-and-spec` | todo | |
 | zz | retire-done-plans | [provider-seam-zz-retire-done-plans](provider-seam-zz-retire-done-plans.md) | `task/provider-seam-zz-retire-done-plans` | todo | Final ticket — deletes every plan. Execute last. |
