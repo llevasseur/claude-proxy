@@ -543,6 +543,11 @@ export const API_ROUTES = [
     params: [],
   },
   { path: '/api/filters', provider: 'anthropic', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
+  // What share of this provider's spend rests on a fallback rate rather than a published
+  // one — ADR 0044's stamp, resolved against the rate table on every call and stored
+  // nowhere (ADR 0065). Provider-scoped because it reads one corpus and one proxy's
+  // declared fallback; a share under one provider says nothing about another.
+  { path: '/api/pricing/mix', provider: 'anthropic', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
 ] as const satisfies readonly ApiRouteDeclaration[];
 
 /** One entry of the manifest, with its literal path, methods and parameters preserved. */

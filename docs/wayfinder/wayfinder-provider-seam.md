@@ -139,7 +139,6 @@ Taken before charting; re-measure rather than trusting these if a ticket turns o
 | 13 | cross-provider-token-series | [provider-seam-13-cross-provider-token-series](provider-seam-13-cross-provider-token-series.md) | `task/provider-seam-13-cross-provider-token-series` | todo | |
 | 14 | ui-pricing-crud-page | [provider-seam-14-ui-pricing-crud-page](provider-seam-14-ui-pricing-crud-page.md) | `task/provider-seam-14-ui-pricing-crud-page` | in-progress | |
 | 15 | ui-unknown-cost-treatment | [provider-seam-15-ui-unknown-cost-treatment](provider-seam-15-ui-unknown-cost-treatment.md) | `task/provider-seam-15-ui-unknown-cost-treatment` | in-progress | |
-| 16 | ui-fallback-stamp | [provider-seam-16-ui-fallback-stamp](provider-seam-16-ui-fallback-stamp.md) | `task/provider-seam-16-ui-fallback-stamp` | in-progress | |
 | 17 | ui-interrupted-resumed | [provider-seam-17-ui-interrupted-resumed](provider-seam-17-ui-interrupted-resumed.md) | `task/provider-seam-17-ui-interrupted-resumed` | todo | |
 | 18 | docs-feature-and-spec | [provider-seam-18-docs-feature-and-spec](provider-seam-18-docs-feature-and-spec.md) | `task/provider-seam-18-docs-feature-and-spec` | todo | |
 | zz | retire-done-plans | [provider-seam-zz-retire-done-plans](provider-seam-zz-retire-done-plans.md) | `task/provider-seam-zz-retire-done-plans` | todo | Final ticket — deletes every plan. Execute last. |
@@ -225,6 +224,39 @@ A gate is a commit on `wayfinder/provider-seam` with a green verify and an hones
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 16 — ui-fallback-stamp · 2026-09-10 · [#327](https://github.com/llevasseur/claude-proxy/pull/327)
+
+`GET /api/pricing/mix` folds the corpus to one row per model **in SQLite**, then resolves
+each against the rate table at the moment of the call. Nothing is cached at any layer — the
+store memoises nothing, the response carries no `immutable`, and the card holds its query at
+`staleTime: 0` with refetch on mount and focus. That is ADR 0065 taken literally rather than
+merely cited: an operator's rate edit moves the figure on the very next read.
+
+**The stamp is dashed, squared and uncoloured, and that is the whole design problem solved.**
+ADR 0044 makes a blanket rate a normal state, so a red badge or an alert icon would report an
+incident on every page load; it borrows the sheet's existing "placed by rule rather than
+observed" gesture and no hue at all. It names the proxy — `anthropic rate`, never the wire
+form `fallback:anthropic`, which reads as a defect to anyone who has not read the ADR.
+
+**A fallback price keeps its digits at full `--text` weight**, and that is what holds it apart
+from an unpriced one: a fallback is spendable money, an unknown is an absence. Ticket 15's
+unknown treatment was left untouched, and the design spec says explicitly what (c) may not
+borrow so the two states cannot converge.
+
+**Both shares take priced spend as the denominator, not all spend.** An unpriced model has no
+cost to take a share of, so folding it into the denominator would shrink the fallback share by
+counting an absence as published spend — the confidently-wrong figure ADR 0065 exists to stop.
+
+Deviations worth knowing. The card's scope is the whole corpus rather than a day window. The
+foot line names the Pricing page in **plain text**, because that route is ticket 14's and a
+typed `<Link to>` to a route this branch did not declare would not compile — turn it into a
+link once 14 lands. The three-phase design protocol ran in full and the reviewing subagent
+found three misses, two real (a `@layer` precedence bug that left the empty legend row at full
+weight, and a skeleton missing `.skeleton-text`) and one withdrawn on inspection; they are
+fixed in `8c359b6`. **In-browser verification did not run** — `scripts/dev-boot.sh` pins Vite
+to 5173, held by a concurrent sibling ticket — so the visual spec was verified statically and
+the endpoint was exercised over HTTP instead.
 
 ### 08 — provider-scoped-routes-and-fanout · 2026-09-10 · [#326](https://github.com/llevasseur/claude-proxy/pull/326)
 

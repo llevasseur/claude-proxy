@@ -326,3 +326,157 @@
     }
   }
 }
+
+/* Where a price got its rate: the stamp, and the card that totals it.
+ *
+ * `docs/adrs/0044-every-model-gets-a-price-row.md` makes a fallback-priced figure a
+ * **normal** state — an estimate, not a fault — and gives its stamp one purpose: so
+ * the dashboard can show what share of a total rests on fallback rates. Everything
+ * here follows from those two clauses at once. The mark has to be visible, or the
+ * share is unreadable; and it must not be a warning, or a normal state reads as an
+ * incident on every page load.
+ *
+ * So it borrows the sheet's existing gesture for "placed by rule rather than
+ * observed" — the dashed edge of `.gauge-ghost` and `.steptree-step.gutter`, and the
+ * `--stripe` hatch `.steptree-turn.delegated` uses for "not this run's own work" —
+ * and borrows **no** hue at all. No amber, no red, no filled pill: those are this
+ * sheet's status gestures, and a rate's provenance is not a status.
+ *
+ * The figure beside the stamp stays at full `--text` weight, and that is the line
+ * that keeps a fallback price apart from an unknown one: a fallback is spendable
+ * money you can read, an unknown has no digits at all. A sibling ticket owns the
+ * unknown treatment; dashed means "estimated" here, so that one leaves dashed alone.
+ */
+
+@layer components {
+  /* --- the stamp ----------------------------------------------------------- */
+
+  /* Sits before the figure in the same cell, so a right-aligned numeric column
+     keeps its digits aligned and the tags hang into the margin beside them. */
+  .rate-stamp {
+    display: inline-block;
+    vertical-align: baseline;
+    margin-right: var(--space-5);
+    padding: var(--space-1) var(--space-4);
+    /* Dashed and squared. `--radius-2` rather than `--radius-pill`: the pill is the
+       badge's shape in this sheet, and this is deliberately not a badge. */
+    border: 1px dashed var(--line);
+    border-radius: var(--radius-2);
+    font-family: var(--font-ui);
+    font-size: var(--text-2);
+    font-weight: 500;
+    line-height: 1.3;
+    letter-spacing: 0.02em;
+    /* Not uppercase: uppercase plus tracking is the status-chip gesture here. */
+    text-transform: none;
+    color: var(--muted);
+    white-space: nowrap;
+    cursor: help;
+    /* A hover colour change, and no motion anywhere else on this component. A mark
+       a reader meets dozens of times on one page earns no entrance. */
+    transition:
+      color var(--motion-duration) ease,
+      border-color var(--motion-duration) ease;
+  }
+
+  .rate-stamp:hover {
+    color: var(--text);
+    border-color: var(--muted);
+  }
+
+  /* The tilde belongs to the figure, so it is set in the figure's own face. */
+  .rate-approx {
+    font-family: var(--font-mono);
+    color: var(--muted);
+  }
+
+  /* --- the share card ------------------------------------------------------ */
+
+  /* Two fills, one hue: lightness says which is which, and the hatch carries the
+     distinction without relying on colour at all. */
+  .rate-seg-table {
+    background: var(--signal);
+  }
+
+  .rate-seg-fallback {
+    background-color: var(--signal-dim);
+    background-image: repeating-linear-gradient(45deg, var(--stripe) 0 3px, transparent 3px 6px);
+  }
+
+  /* A live retarget slides rather than jumps, as `.usage-bar-fill` does. Width is
+     what changes, so width is what is timed. */
+  .rate-coverage-bar .stackbar-seg {
+    transition: width var(--motion-duration-slow) ease;
+  }
+
+  .rate-coverage-legend {
+    list-style: none;
+    margin: 0 0 var(--space-8);
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-5) var(--space-10);
+    font-size: var(--text-4);
+  }
+
+  .rate-coverage-legend li {
+    display: flex;
+    align-items: center;
+    gap: var(--space-5);
+  }
+
+  /* Width and height are dimensions rather than spacing, so a raw px is right here
+     and the size rule does not govern them. */
+  .rate-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: var(--radius-1);
+    border: 1px solid var(--line);
+    flex: none;
+  }
+
+  .rate-legend-label {
+    color: var(--text);
+  }
+
+  /* The empty-category row, muted from inside this sheet rather than by `.muted`.
+     `.muted` is declared in `@layer layout` and `styles.css` declares `components`
+     after it, so the rule above beats it whatever the specificity — and the row meant
+     to read as "this category exists and is at zero" would come out at full weight,
+     looking like a real figure. Keep this declared AFTER `.rate-legend-label`: they
+     are equal specificity in one layer, so source order is what decides, and
+     reordering the file brings the bug back silently. */
+  .rate-legend-empty {
+    color: var(--muted);
+  }
+
+  /* In the legend the stamp hangs off nothing, so it drops the cell gap it carries
+     inside a table. */
+  .rate-legend-label .rate-stamp {
+    margin-right: 0;
+  }
+
+  .rate-legend-value {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+  }
+
+  .rate-legend-share {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+  }
+
+  /* Model names are identifiers. */
+  .rate-model {
+    font-family: var(--font-mono);
+    font-size: var(--text-4);
+  }
+
+  .rate-coverage-foot {
+    margin-top: var(--space-8);
+    font-size: var(--text-4);
+    line-height: 1.5;
+  }
+}

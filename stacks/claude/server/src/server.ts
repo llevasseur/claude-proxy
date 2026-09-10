@@ -118,6 +118,7 @@ import { RemoteConceptStoreError, remoteConceptStore } from './concepts-remote.j
 import { resolveServerPort } from './config.js';
 import { memoiseByCorpus } from './corpus-memo.js';
 import { resolveDbPath } from './db/open.js';
+import { readPricingMix } from './db/pricing-mix-store.js';
 import { localReadFailureReason } from './db/provider-fanout.js';
 import { recordRouteObservation } from './db/route-observation-store.js';
 import {
@@ -2077,6 +2078,17 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
   },
   '/api/filters': async ({ res }) => {
     send(res, 200, buildFilters());
+  },
+  // Resolved on every call rather than read from a column — ADR 0065. There is
+  // deliberately no cache here and no `immutable` on the response: an operator
+  // editing a rate must move this answer on the very next read, and a stored or
+  // cached share is the confidently-wrong figure that ADR forbids.
+  '/api/pricing/mix': async ({ res }) => {
+    const mix = readPricingMix(LOG_DIR);
+    // No substrate is "nothing to report", not a failure: the dashboard renders the
+    // card's own empty state rather than an error, exactly as it does for a corpus
+    // that holds no priced traffic yet.
+    send(res, 200, { mix, meta: { available: mix !== null } });
   },
 };
 
