@@ -2,7 +2,7 @@
 
 **Wayfinder:** `provider-seam`
 **Branch:** `task/provider-seam-05-ox-store-repair-and-migration`
-**Status:** active
+**Status:** done · 2026-09-10
 
 **The two halves are strictly ordered**, which is why they are one ticket. ox has no ladder
 at all today, so any version bump is an immediate hard failure.

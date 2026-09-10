@@ -137,7 +137,6 @@ Taken before charting; re-measure rather than trusting these if a ticket turns o
 | # | Task | Plan | Branch | Status | Note |
 |---|------|------|--------|--------|------|
 | 03 | claude-migration-23 | [provider-seam-03-claude-migration-23](provider-seam-03-claude-migration-23.md) | `task/provider-seam-03-claude-migration-23` | in-progress | |
-| 05 | ox-store-repair-and-migration | [provider-seam-05-ox-store-repair-and-migration](provider-seam-05-ox-store-repair-and-migration.md) | `task/provider-seam-05-ox-store-repair-and-migration` | in-progress | |
 | 06 | pricing-table-and-read-time-cost | [provider-seam-06-pricing-table-and-read-time-cost](provider-seam-06-pricing-table-and-read-time-cost.md) | `task/provider-seam-06-pricing-table-and-read-time-cost` | todo | |
 | 07 | typed-store-absence-envelope | [provider-seam-07-typed-store-absence-envelope](provider-seam-07-typed-store-absence-envelope.md) | `task/provider-seam-07-typed-store-absence-envelope` | todo | |
 | 08 | provider-scoped-routes-and-fanout | [provider-seam-08-provider-scoped-routes-and-fanout](provider-seam-08-provider-scoped-routes-and-fanout.md) | `task/provider-seam-08-provider-scoped-routes-and-fanout` | todo | |
@@ -230,6 +229,37 @@ A gate is a commit on `wayfinder/provider-seam` with a green verify and an hones
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 05 — ox-store-repair-and-migration · 2026-09-10 · [#321](https://github.com/llevasseur/claude-proxy/pull/321)
+
+Ox's store gained a forward-only ladder in `open.ts`'s shape before its version moved, in
+that order because the plan forbids the reverse. A version the ladder cannot reach throws;
+no delete-or-rebuild path exists, pinned by a test asserting the module names no deletion
+API and no `-wal`/`-shm` path. `SCHEMA_VERSION` then went 1 to 2, adding `provider`,
+`harness`, `model` and `adapter_version` to `usage_records`, stamped at ingest.
+
+**The ladder's steps run in one transaction, which closes a real hazard rather than a
+theoretical one.** Without it, a store whose `ADD COLUMN` landed but whose backfill did not
+would keep its old `user_version` and re-run that `ADD COLUMN` on every open, forever.
+
+**Ox's identity is written as literals — `ox-alpha`, `opencode`, `1` — not imported.** Ox's
+server depends on `@agent-proxy/ox-core` alone and cannot reach claude-core's
+`adapter-seam.ts`, so the seam carries data rather than a cross-stack dependency, the same
+call ticket 04 made for codex.
+
+**One judgement call and one honest gap.** The migration backfills pre-existing rows via
+`json_extract` rather than leaving NULLs, so no row is ever half-stamped; a one-time read at
+migration time is not a read path. And `history()` and `sidecarsInRange()` read `model` from
+the column, pinned by a test where column and blob deliberately disagree — but
+`allSidecars()` and `summary()` still pass whole sidecars to ox-core aggregation. Closing
+that needs edits under `stacks/ox-alpha/packages/core/**`, outside this ticket's lane, so it
+is documented in the module rather than widened into.
+
+**The merge needed a hand, and the cause is worth recording.** `.gitattributes` gives
+`CHANGELOG.md` a `merge=union` driver, but that driver is local: GitHub does not apply it
+server-side. This branch and ticket 04's both prepended to the file, so `merge-tree` reported
+clean locally while GitHub refused to create the merge commit. Merging the base into the
+branch resolved it. Any two campaign tickets in flight together will hit this.
 
 ### 04 — codex-store-repair-and-migration · 2026-09-10 · [#322](https://github.com/llevasseur/claude-proxy/pull/322)
 
