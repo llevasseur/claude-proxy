@@ -2,7 +2,7 @@
 
 **Wayfinder:** `provider-seam`
 **Branch:** `task/provider-seam-04-codex-store-repair-and-migration`
-**Status:** active
+**Status:** done · 2026-09-10
 
 **The two halves of this ticket are strictly ordered, and that is why they are one ticket
 rather than two.** Reversed, this destroys codex's corpus.
