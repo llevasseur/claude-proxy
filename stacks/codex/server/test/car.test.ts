@@ -70,8 +70,13 @@ interface TrendsResponse {
   }>;
 }
 
-describe('Car view schema v2', () => {
-  test('rebuilds a mismatched database empty and reproduces seeded results by re-ingesting', async () => {
+// These two tests asserted the opposite until provider-seam ticket 04: a
+// mismatched store was deleted and rebuilt from the sidecars, per ADR 0028.
+// ADR 0047 supersedes that and forbids resolving a mismatch by deletion, so
+// what they pin now is the refusal — and, in both cases, that the rows the old
+// behaviour would have destroyed are still there afterwards.
+describe('Car view schema mismatch', () => {
+  test('refuses a store stamped newer than the build, leaving every row in place', async () => {
     const temporary = await temporaryDirectory();
     cleanups.push(temporary.cleanup);
     const path = join(temporary.path, 'usage.db');
@@ -83,55 +88,59 @@ describe('Car view schema v2', () => {
     first.close();
 
     const corruptor = new DatabaseSync(path);
-    corruptor.exec('PRAGMA user_version = 4');
+    corruptor.exec('PRAGMA user_version = 99');
     corruptor.close();
 
-    const second = new UsageDatabase(path);
-    expect(second.schemaVersion).toBe(3);
-    expect(second.diagnostics().recordCount).toBe(0);
-    second.ingest('a.audit.json', sidecar('a'), new Date());
-    second.ingest('b.audit.json', sidecar('b'), new Date());
-    expect(second.history(range, [], 50, 0)).toEqual(seeded);
-    second.close();
+    expect(() => new UsageDatabase(path)).toThrow(/newer than this build/);
+
+    // The refusal is only worth anything if the corpus survived it.
+    const survivor = new DatabaseSync(path);
+    // SAFETY: `COUNT(*)` always answers exactly one row with the single
+    // aliased integer column this shape declares.
+    const count = survivor.prepare('SELECT COUNT(*) AS count FROM usage_records').get() as unknown as {
+      count: number;
+    };
+    expect(count.count).toBe(2);
+    // Restamp it to this build's version; the rows were never touched, so the
+    // same history comes back.
+    survivor.exec('PRAGMA user_version = 4');
+    survivor.close();
+
+    const reopened = new UsageDatabase(path);
+    expect(reopened.history(range, [], 50, 0)).toEqual(seeded);
+    reopened.close();
   });
 
-  test('startup backfill re-ingests every final sidecar after discarding a legacy v1 database', async () => {
-    const { origin } = await start(new Date('2026-08-19T18:00:00.000Z'), async (directory) => {
-      mkdirSync(directory, { recursive: true });
-      const legacy = new DatabaseSync(join(directory, 'usage.db'));
-      legacy.exec(`
-        CREATE TABLE usage_records (
-          record_id TEXT PRIMARY KEY,
-          filename TEXT NOT NULL UNIQUE,
-          event_timestamp TEXT NOT NULL,
-          sidecar_json TEXT NOT NULL
-        );
-        CREATE TABLE ingest_watermarks (
-          filename TEXT PRIMARY KEY,
-          record_id TEXT NOT NULL,
-          ingested_at TEXT NOT NULL
-        );
-        CREATE TABLE rejected_sidecars (
-          filename TEXT PRIMARY KEY,
-          reason TEXT NOT NULL,
-          rejected_at TEXT NOT NULL
-        );
-        PRAGMA user_version = 1;
-      `);
-      legacy.close();
-      await writeSidecar(directory, 'one.audit.json', sidecar('one'));
-      await writeSidecar(directory, 'two.audit.json', sidecar('two', '2026-08-18T16:00:00.000Z'));
-    });
-    const health = (await fetch(`${origin}/api/health`).then((response) => response.json())) as {
-      database: { schemaVersion: number; journalMode: string; recordCount: number };
-    };
-    expect(health.database).toMatchObject({ schemaVersion: 3, journalMode: 'wal', recordCount: 2 });
+  test('refuses a legacy v1 database instead of discarding it', async () => {
+    const temporary = await temporaryDirectory();
+    cleanups.push(temporary.cleanup);
+    const path = join(temporary.path, 'usage.db');
+    mkdirSync(temporary.path, { recursive: true });
+    const legacy = new DatabaseSync(path);
+    legacy.exec(`
+      CREATE TABLE usage_records (
+        record_id TEXT PRIMARY KEY,
+        filename TEXT NOT NULL UNIQUE,
+        event_timestamp TEXT NOT NULL,
+        sidecar_json TEXT NOT NULL
+      );
+      INSERT INTO usage_records (record_id, filename, event_timestamp, sidecar_json)
+        VALUES ('legacy', 'legacy.audit.json', '2026-08-19T16:00:00.000Z', '{}');
+      PRAGMA user_version = 1;
+    `);
+    legacy.close();
 
-    const history = (await fetch(`${origin}/api/history`).then((response) => response.json())) as HistoryResponse;
-    expect(history.total).toBe(2);
-    expect(history.records.map((record) => record.recordId)).toEqual(['one', 'two']);
-    const repeat = await fetch(`${origin}/api/history`).then((response) => response.json());
-    expect(repeat).toEqual(history);
+    expect(() => new UsageDatabase(path)).toThrow(/predates the oldest migration/);
+
+    const survivor = new DatabaseSync(path);
+    // SAFETY: the legacy table above declares `record_id` as its TEXT primary
+    // key and holds the single row inserted with it.
+    const row = survivor.prepare('SELECT record_id FROM usage_records').get() as unknown as { record_id: string };
+    expect(row.record_id).toBe('legacy');
+    // SAFETY: `PRAGMA user_version` answers one row with one integer column of
+    // that name.
+    expect((survivor.prepare('PRAGMA user_version').get() as unknown as { user_version: number }).user_version).toBe(1);
+    survivor.close();
   });
 });
 
