@@ -35,6 +35,25 @@ export function substrateSource(): SidecarSource | null {
 }
 
 /**
+ * The open database itself, for the one dimension the log files do not hold.
+ *
+ * Every other route reads through {@link readSource}, because the substrate is a
+ * *view* over sidecars and the file scan can always answer instead. The rate table
+ * is not that: an operator types those rows in and nothing on disk carries them, so
+ * a caller that needs them needs this handle and has no second source to fall back
+ * to. That is also why this ignores `DB_READS` — the flag chooses between two
+ * backings of the same data, and here there is only one.
+ *
+ * `null` when the substrate never opened, which callers must answer as unavailable
+ * rather than as an empty table: no rows and no database are different facts, and
+ * showing the second as the first would invite an operator to re-enter a table that
+ * is still there.
+ */
+export function substrateDb(): DatabaseSync | null {
+  return handle?.db ?? null;
+}
+
+/**
  * The reversal, in one flag: on unless `DB_READS=0`, which puts every route back
  * on the directory scan. There is no migration to undo — the log files were
  * never touched, so the file scan still answers every route.

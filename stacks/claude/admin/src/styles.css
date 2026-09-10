@@ -52,5 +52,9 @@
 @import "./styles/components/timeline.css";
 @import "./styles/components/skeleton.css";
 @import "./styles/components/pr-tree.css";
-/* After `skeleton.css`: the rate-coverage bar is a `.stackbar`, declared there. */
+/* One sheet, two surfaces, and its position has to satisfy both. After
+ * `skeleton.css`, because the rate-coverage bar is a `.stackbar` declared there;
+ * after `table.css`, because the pricing page restyles `.pricing-table` cells at the
+ * same specificity as `.table td` and has to be read later to win. This spot is after
+ * both, so one import serves them. */
 @import "./styles/components/pricing.css";
