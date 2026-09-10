@@ -1138,7 +1138,7 @@ export const getHealth = () => read('/api/health');
 /**
  * Where spend gets its rates, resolved server-side on every call.
  *
- * Its caller must not cache the answer past a rate edit — see `PricingMixCard`, which
+ * Its caller must not cache the answer past a rate edit — see `RateCoverageCard`, which
  * holds it at `staleTime: 0`. ADR 0065 makes this a function of an editable table, so a
  * cached share outlives the fact it reports.
  */
