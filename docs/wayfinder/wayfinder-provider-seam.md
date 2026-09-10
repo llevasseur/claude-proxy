@@ -137,7 +137,6 @@ Taken before charting; re-measure rather than trusting these if a ticket turns o
 | # | Task | Plan | Branch | Status | Note |
 |---|------|------|--------|--------|------|
 | 13 | cross-provider-token-series | [provider-seam-13-cross-provider-token-series](provider-seam-13-cross-provider-token-series.md) | `task/provider-seam-13-cross-provider-token-series` | todo | |
-| 14 | ui-pricing-crud-page | [provider-seam-14-ui-pricing-crud-page](provider-seam-14-ui-pricing-crud-page.md) | `task/provider-seam-14-ui-pricing-crud-page` | in-progress | |
 | 15 | ui-unknown-cost-treatment | [provider-seam-15-ui-unknown-cost-treatment](provider-seam-15-ui-unknown-cost-treatment.md) | `task/provider-seam-15-ui-unknown-cost-treatment` | in-progress | |
 | 17 | ui-interrupted-resumed | [provider-seam-17-ui-interrupted-resumed](provider-seam-17-ui-interrupted-resumed.md) | `task/provider-seam-17-ui-interrupted-resumed` | todo | |
 | 18 | docs-feature-and-spec | [provider-seam-18-docs-feature-and-spec](provider-seam-18-docs-feature-and-spec.md) | `task/provider-seam-18-docs-feature-and-spec` | todo | |
@@ -224,6 +223,52 @@ A gate is a commit on `wayfinder/provider-seam` with a green verify and an hones
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 14 — ui-pricing-crud-page · 2026-09-10 · [#328](https://github.com/llevasseur/claude-proxy/pull/328)
+
+`/pricing` is the operator's surface over ticket 06's rate table: four validated fields per
+model, a visible save state, and no JSON on the page. `stacks/claude/admin/src/routes/pricing.tsx`
+is the page, mounted by one line of `routes/registry.ts`; three new routes (`/api/pricing` and
+two origin-checked writes) are served by `stacks/claude/server/src/rate-table-api.ts`.
+
+**The validation rule went into core rather than into the page**, as `parseRateField`,
+`checkRateValue` and `checkModelName` in `rate-table.ts`. The form and the handler ask the same
+question, because a form that accepts what the server rejects tells an operator their correction
+landed while the corpus reprices to something else. The parser is deliberately narrower than
+`Number()`, which reads `0x10`, `1e5` and `Infinity` as numbers, and it holds the same
+six-decimal ceiling `pricing.ts` already applies to the catalogue — a rate table is exactly where
+a plausible-looking typo must not become a price.
+
+**Blank is not configured and never zero**, kept apart in type face as well as text: `not set` is
+dotted prose in the UI face, `0.00` a number in the mono face, with an amber marker on any row
+carrying a hole. **A failed save cannot be mistaken for one that landed** — the states differ in
+glyph, hue, tense and persistence, the green check decaying while the coral triangle stays until
+the operator acts. The reprices-history consequence is the page's standing frame rather than a
+modal, since ADR 0065 makes it true on every visit, and after a save the note names the bucket and
+the move. No dates anywhere, per ADR 0044.
+
+**Deviations.** The Fallback card is read-only — no edit, no withdraw, no fallback write routes —
+because the criteria scope the form to the four rates per model and ticket 16 owns the fallback
+surfaces; the declared fallback is still shown so a delete's consequence stays legible. The inline
+row edit is not a `<form>`, since one cannot span table cells, so Enter and Escape ride a handler
+on the row wrapper.
+
+**The three-phase protocol ran in full and earned its keep.** The Fable design agent's review of
+the implementation found four criterion failures the implementer had missed — inline validation
+hidden by a stylesheet rule expecting a collector element that was never rendered, a `saved` state
+unreachable because the success handler closed the row that held it, a silent failed delete, and a
+post-save line that neither named what moved nor skipped no-op saves — plus focus-management gaps.
+All are fixed in the branch's second commit.
+
+**Missing evidence, recorded rather than glossed:** there is no browser pass. Port 5173 was held by
+another process and `vite.config.ts` pins `strictPort`, so phase 3 was a source-level conformance
+review. The API half was exercised against a live server: `GET /api/pricing` answers 503 with a
+typed message when no substrate is open, and the writes refuse bad input at 400 naming the field.
+
+**Merge note for later tickets:** 16 and 14 both created
+`stacks/claude/admin/src/styles/components/pricing.css`. The conflict was textual only — 16's rules
+are all `.rate-*`, 14's all `.pricing-*` — and both survive in one sheet behind a single import
+placed after `skeleton.css` and `table.css`, which is what both halves need.
 
 ### 16 — ui-fallback-stamp · 2026-09-10 · [#327](https://github.com/llevasseur/claude-proxy/pull/327)
 
