@@ -2,17 +2,12 @@
  * Run `backUpBeforeMigration23` against a corpus deliberately larger than this
  * process's heap, and print the name of the file it wrote.
  *
- * This is spawned by `migration-23-record-stamp.test.ts` under an explicit
- * `--max-old-space-size`, because that cap is the assertion: the implementation
- * that read the whole `request` table with `.all()` and mapped it to strings
- * cannot finish here, and a streaming one barely notices. Running it in a child
- * is what makes the cap possible at all — Vitest's own worker sets the heap for
- * the whole suite, and a bound this test can dictate is the only bound worth
- * asserting.
+ * Spawned by `migration-23-record-stamp.test.ts` under an explicit
+ * `--max-old-space-size`, since running in a child is what makes that cap
+ * possible — Vitest's own worker sets the heap for the whole suite.
  *
  * Plain `.mjs` rather than TypeScript so it starts with no loader, no transform
- * and no type-stripping cost — the memory number should be this function's, not
- * a toolchain's.
+ * and no type-stripping cost.
  *
  * argv: <logDir> <rowCount> <skimChars>
  */

@@ -1073,9 +1073,8 @@ export const BACKUP_DIR = 'backups';
 
 /**
  * How much JSONL `backUpBeforeMigration23` buffers before it flushes to the open
- * handle. It bounds the buffer by **characters rather than rows**, which is the
- * whole point: a row-counted batch of a corpus whose skims run to a megabyte
- * apiece is not bounded at all. Peak memory for the backup is one row plus this.
+ * handle. Bounded by characters rather than rows, since a row-counted batch is no
+ * bound when a single skim runs to a megabyte. Peak memory is one row plus this.
  */
 const BACKUP_FLUSH_CHARS = 1 << 20;
 
@@ -1117,20 +1116,15 @@ const BACKUP_FLUSH_CHARS = 1 << 20;
  * believed in is worse than a loud failure to start, and the caller can retry once
  * the directory is writable.
  *
- * ## It streams, because the corpus is larger than the heap
+ * ## It streams
  *
- * This once read the whole query with `.all()` and mapped it to strings, which
- * held the entire `request` table — skim text and all — in memory twice. Against
- * the real store that is far past the default heap, and because this runs
- * *before* the ladder the process died on every open and the database never
- * advanced past 22. Rows are pulled one at a time and flushed through a
- * character-bounded buffer instead, so peak memory is one row plus
- * `BACKUP_FLUSH_CHARS` whatever the corpus weighs. The file it writes is
- * unchanged: same path, same JSONL, same columns, same order.
+ * Rows are pulled one at a time and flushed through a character-bounded buffer,
+ * so peak memory is one row plus `BACKUP_FLUSH_CHARS` whatever the corpus weighs.
+ * The file it writes is unchanged: same path, same JSONL, same columns, same
+ * order.
  *
  * Exported only so `migration-23-record-stamp.test.ts` can pin that bound
- * directly, under a heap cap the materializing version could not survive. That
- * is a test seam, not a reader — the paragraph above still holds.
+ * directly. That is a test seam, not a reader — the paragraph above still holds.
  */
 export function backUpBeforeMigration23(db: DatabaseSync, logDir: string): void {
   // SAFETY: `PRAGMA user_version` answers a single row whose single column SQLite
@@ -1160,9 +1154,8 @@ export function backUpBeforeMigration23(db: DatabaseSync, logDir: string): void 
   // wearing the name of a complete one.
   const partial = `${file}.partial`;
 
-  // The file handle is opened by the first row rather than up front, so a
-  // `request` table that is present but empty still writes no file and creates
-  // no directory — the case the `rows.length === 0` early return used to cover.
+  // Opened on the first row rather than up front, so an empty `request` table
+  // still writes no file and creates no directory.
   let handle: number | null = null;
   let pending = '';
 

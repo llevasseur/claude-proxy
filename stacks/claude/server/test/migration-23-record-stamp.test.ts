@@ -330,21 +330,13 @@ describe('ingest fills the record stamp', () => {
 });
 
 /**
- * The backup's memory bound.
+ * The backup's memory bound, asserted as a bound rather than on a small fixture.
  *
- * Every case above passes on a fixture of two rows, which is exactly why they all
- * passed while the server could not start. The implementation read the whole
- * `request` table with `.all()` and mapped it to strings, so its peak memory was
- * the corpus rather than the code — and against the real store, tens of thousands
- * of requests carrying their skim text, that exceeded the default heap and killed
- * the process about nineteen seconds into boot. Because this runs *before* the
- * ladder, the database never advanced past 22 on any attempt.
- *
- * So the bound is asserted as a bound. The child builds a corpus several times
- * the heap it is given and runs the real function against it: the cap is the
- * assertion, and an implementation that holds all rows cannot pass it. Measured
- * on this fixture, the pre-fix version aborts with the same
- * `Ineffective mark-compacts near heap limit` the defect reported.
+ * Every case above passes on two rows, which is exactly why an implementation
+ * that read the whole `request` table with `.all()` and mapped it to strings
+ * still passed them all while dying against the real corpus. The child here
+ * builds a corpus several times its heap and runs the real function against
+ * it, so an implementation that holds all rows cannot pass.
  */
 describe('the pre-migration backup is bounded by its buffer, not by the corpus', () => {
   /** 64 MiB of skim text — over the child's heap, and well over it once mapped to strings. */
