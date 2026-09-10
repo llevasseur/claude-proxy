@@ -995,6 +995,48 @@ export interface ChatStopResponse {
   stopped: boolean;
 }
 
+/** One model's spend and the stamp the rate table earns it — `cost` is a USD decimal string. */
+export interface PricingMixModel {
+  model: string;
+  requests: number;
+  tokens: number;
+  cost: string | null;
+  source: 'table' | 'fallback' | null;
+  /** The `<proxy>` in `fallback:<proxy>`; null unless `source` is `fallback`. */
+  fallbackProxy: string | null;
+  /** ADR 0044's stamp as written: `table` or `fallback:<proxy>`. */
+  stamp: string | null;
+}
+export interface PricingMixBucket {
+  models: number;
+  requests: number;
+  tokens: number;
+  cost: string;
+}
+/**
+ * Where this corpus's spend gets its rates, resolved at the moment of the call.
+ *
+ * Both shares have **priced** spend as their denominator, not all spend: an unpriced
+ * model has no cost to take a share of, so folding it in would shrink the fallback
+ * share by counting an absence as published spend.
+ */
+export interface PricingMixReport {
+  proxy: string;
+  fallbackDeclared: boolean;
+  models: PricingMixModel[];
+  published: PricingMixBucket;
+  fallback: PricingMixBucket;
+  unpriced: { models: number; requests: number; tokens: number };
+  fallbackCostShare: number | null;
+  fallbackRequestShare: number | null;
+  resolvedAt: string;
+}
+/** `mix` is null when the server has no substrate to read — nothing to report, not an error. */
+export interface PricingMixResponse {
+  mix: PricingMixReport | null;
+  meta: { available: boolean };
+}
+
 /**
  * What each declared read answers. `extends Record<ApiJsonGetPath, unknown>` keys it by
  * the manifest's own GET paths: a declared route with no shape here does not compile,
@@ -1002,6 +1044,7 @@ export interface ChatStopResponse {
  */
 export interface ApiGetResponses extends Record<ApiJsonGetPath, unknown> {
   '/api/health': HealthResponse;
+  '/api/pricing/mix': PricingMixResponse;
   '/api/summary': SummaryResponse;
   '/api/trends': TrendsResponse;
   '/api/prompt-mix': PromptMixResponse;
@@ -1120,6 +1163,14 @@ async function write<P extends ApiWritePath, Body>(path: P, body: Body): Promise
 }
 
 export const getHealth = () => read('/api/health');
+/**
+ * Where spend gets its rates, resolved server-side on every call.
+ *
+ * Its caller must not cache the answer past a rate edit — see `RateCoverageCard`, which
+ * holds it at `staleTime: 0`. ADR 0065 makes this a function of an editable table, so a
+ * cached share outlives the fact it reports.
+ */
+export const getPricingMix = () => read('/api/pricing/mix');
 export const getSummary = (date?: string) => read('/api/summary', { date });
 /** `models` narrows every day to those models; omit it (or pass none) for the whole window. */
 export const getTrends = (days: number, models?: readonly string[]) =>
