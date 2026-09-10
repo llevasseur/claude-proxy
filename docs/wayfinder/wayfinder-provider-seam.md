@@ -10,8 +10,8 @@ scope: all
 # Wayfinder — Provider Seam
 
 **Slug:** `provider-seam`
-**Integration branch:** `the-great-merge` (cut from it, merged back into it; the planning and campaign pull requests target it — resolved from `--integration`, not the repository default)
-**Base branch:** `wayfinder/provider-seam` (cut from the integration branch above; every ticket targets it)
+**Integration branch:** `main` (the campaign pull request targets it)
+**Base branch:** `wayfinder/provider-seam` (every ticket targets it)
 **Unattended:** `yes` (fixed at start by whether `--unattended` was typed there; `yes` means the kickoff prompt resumes this campaign unattended)
 **Plans directory:** `docs/wayfinder`
 **Started:** 2026-08-25
@@ -87,7 +87,15 @@ A ticket that follows the original brief instead of the correction will do the w
    block of `stacks/claude/server/src/db/open.ts`, and the comment above it records why it
    is deliberately not `skim_text IS NOT NULL`. An earlier pass wrongly concluded it did
    not exist by grepping for a *table* of that name.
-5. **The claude/ox port collision changes category.** It was pre-existing awkwardness only
+5. **The integration branch this campaign was cut from no longer exists.** `the-great-merge`
+   was deleted at origin once PR #295 landed the fusion campaign on `main` — as a squash, so
+   none of this campaign's own commits are ancestors of `main` either. The header above now
+   names `main`, and `wayfinder/provider-seam` was resynced with it on 2026-09-10, 225
+   commits behind at the time. Two conflict classes are worth knowing before the next
+   resync: ox's ports resolve to **this campaign's** side (`8808`, ADR 0062), and claude's
+   admin CSS resolves to **main's** side, because `scripts/check-css-flow-spacing.mjs`
+   arrived on main and fails the older `margin-top` form.
+6. **The claude/ox port collision changes category.** It was pre-existing awkwardness only
    while nothing required both servers up at once; ADR 0041's picker requires exactly that.
    See ADR 0062.
 
@@ -129,7 +137,7 @@ Taken before charting; re-measure rather than trusting these if a ticket turns o
 | # | Task | Plan | Branch | Status | Note |
 |---|------|------|--------|--------|------|
 | 03 | claude-migration-23 | [provider-seam-03-claude-migration-23](provider-seam-03-claude-migration-23.md) | `task/provider-seam-03-claude-migration-23` | todo | |
-| 04 | codex-store-repair-and-migration | [provider-seam-04-codex-store-repair-and-migration](provider-seam-04-codex-store-repair-and-migration.md) | `task/provider-seam-04-codex-store-repair-and-migration` | in-progress | |
+| 04 | codex-store-repair-and-migration | [provider-seam-04-codex-store-repair-and-migration](provider-seam-04-codex-store-repair-and-migration.md) | `task/provider-seam-04-codex-store-repair-and-migration` | todo | |
 | 05 | ox-store-repair-and-migration | [provider-seam-05-ox-store-repair-and-migration](provider-seam-05-ox-store-repair-and-migration.md) | `task/provider-seam-05-ox-store-repair-and-migration` | todo | |
 | 06 | pricing-table-and-read-time-cost | [provider-seam-06-pricing-table-and-read-time-cost](provider-seam-06-pricing-table-and-read-time-cost.md) | `task/provider-seam-06-pricing-table-and-read-time-cost` | todo | |
 | 07 | typed-store-absence-envelope | [provider-seam-07-typed-store-absence-envelope](provider-seam-07-typed-store-absence-envelope.md) | `task/provider-seam-07-typed-store-absence-envelope` | todo | |
