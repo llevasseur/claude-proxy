@@ -1072,6 +1072,13 @@ export function openDb(logDir: string): DatabaseSync {
 export const BACKUP_DIR = 'backups';
 
 /**
+ * How much JSONL `backUpBeforeMigration23` buffers before it flushes to the open
+ * handle. Bounded by characters rather than rows, since a row-counted batch is no
+ * bound when a single skim runs to a megabyte. Peak memory is one row plus this.
+ */
+const BACKUP_FLUSH_CHARS = 1 << 20;
+
+/**
  * Copy `request_skim` and the `body_derived` flag to JSONL **before the ladder
  * runs**, on the one open that is about to cross into schema 23.
  *
@@ -1108,8 +1115,18 @@ export const BACKUP_DIR = 'backups';
  * It is allowed to throw. A backup that was asked for, silently skipped, and
  * believed in is worse than a loud failure to start, and the caller can retry once
  * the directory is writable.
+ *
+ * ## It streams
+ *
+ * Rows are pulled one at a time and flushed through a character-bounded buffer,
+ * so peak memory is one row plus `BACKUP_FLUSH_CHARS` whatever the corpus weighs.
+ * The file it writes is unchanged: same path, same JSONL, same columns, same
+ * order.
+ *
+ * Exported only so `migration-23-record-stamp.test.ts` can pin that bound
+ * directly. That is a test seam, not a reader — the paragraph above still holds.
  */
-function backUpBeforeMigration23(db: DatabaseSync, logDir: string): void {
+export function backUpBeforeMigration23(db: DatabaseSync, logDir: string): void {
   // SAFETY: `PRAGMA user_version` answers a single row whose single column SQLite
   // names `user_version`, which is what this row type declares — the same read
   // `migrate` makes below.
@@ -1124,22 +1141,42 @@ function backUpBeforeMigration23(db: DatabaseSync, logDir: string): void {
       : null;
   const skimColumn = skimSource === null ? 'NULL AS skim_text' : skimSource === '' ? 'r.skim_text' : 's.skim_text';
 
-  const rows = db
-    .prepare(`SELECT r.id AS id, r.body_derived AS body_derived, ${skimColumn} FROM request r ${skimSource ?? ''}`)
-    .all();
-  if (rows.length === 0) return;
+  const statement = db.prepare(
+    `SELECT r.id AS id, r.body_derived AS body_derived, ${skimColumn} FROM request r ${skimSource ?? ''}`,
+  );
 
-  const lines = rows.map((row) => JSON.stringify(row));
   const dir = path.join(logDir, BACKUP_DIR);
   // A colon is legal on this filesystem and awkward everywhere else, so the
   // timestamp is flattened rather than written as a bare ISO string.
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const file = path.join(dir, `pre-migration-23-${stamp}.jsonl`);
-  fs.mkdirSync(dir, { recursive: true });
   // Written aside and renamed, so a crash mid-write cannot leave a half file
   // wearing the name of a complete one.
   const partial = `${file}.partial`;
-  fs.writeFileSync(partial, `${lines.join('\n')}\n`, 'utf8');
+
+  // Opened on the first row rather than up front, so an empty `request` table
+  // still writes no file and creates no directory.
+  let handle: number | null = null;
+  let pending = '';
+
+  try {
+    for (const row of statement.iterate()) {
+      if (handle === null) {
+        fs.mkdirSync(dir, { recursive: true });
+        handle = fs.openSync(partial, 'w');
+      }
+      pending += `${JSON.stringify(row)}\n`;
+      if (pending.length >= BACKUP_FLUSH_CHARS) {
+        fs.writeSync(handle, pending);
+        pending = '';
+      }
+    }
+    if (handle !== null && pending !== '') fs.writeSync(handle, pending);
+  } finally {
+    if (handle !== null) fs.closeSync(handle);
+  }
+
+  if (handle === null) return;
   fs.renameSync(partial, file);
 }
 

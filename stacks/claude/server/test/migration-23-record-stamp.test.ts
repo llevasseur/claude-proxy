@@ -1,7 +1,9 @@
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { createInterface } from 'node:readline';
 import type { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ingest } from '../src/db/ingest.js';
@@ -325,4 +327,71 @@ describe('ingest fills the record stamp', () => {
     expect(queryOne(db, 'SELECT COUNT(*) AS n FROM request')?.n).toBe(0);
     db.close();
   });
+});
+
+/**
+ * The backup's memory bound, asserted as a bound rather than on a small fixture.
+ *
+ * Every case above passes on two rows, which is exactly why an implementation
+ * that read the whole `request` table with `.all()` and mapped it to strings
+ * still passed them all while dying against the real corpus. The child here
+ * builds a corpus several times its heap and runs the real function against
+ * it, so an implementation that holds all rows cannot pass.
+ */
+describe('the pre-migration backup is bounded by its buffer, not by the corpus', () => {
+  /** 64 MiB of skim text — over the child's heap, and well over it once mapped to strings. */
+  const ROWS = 64;
+  const SKIM_CHARS = 1024 * 1024;
+  const HEAP_CAP_MB = 48;
+
+  let logDir: string;
+
+  beforeEach(async () => {
+    logDir = await mkdtemp(path.join(tmpdir(), 'migration-23-heap-'));
+  });
+
+  afterEach(async () => {
+    await rm(logDir, { recursive: true, force: true });
+  });
+
+  it('writes every row of a corpus larger than the heap it is given', async () => {
+    // Run through the package's own `tsx`: `open.ts` reaches into
+    // `@agent-proxy/claude-core`, whose imports carry the `.js` extensions bare
+    // node cannot resolve against TypeScript source.
+    const result = spawnSync(
+      path.join(import.meta.dirname, '..', 'node_modules', '.bin', 'tsx'),
+      [path.join(import.meta.dirname, 'backup-under-heap-cap.mjs'), logDir, String(ROWS), String(SKIM_CHARS)],
+      {
+        encoding: 'utf8',
+        // The cap belongs to the child alone. Vitest's worker sets its own heap,
+        // and a bound this test cannot dictate is not a bound it can assert.
+        env: { ...process.env, NODE_OPTIONS: `--max-old-space-size=${HEAP_CAP_MB}` },
+      },
+    );
+
+    expect(result.stderr).not.toMatch(/heap out of memory/);
+    expect(result.status).toBe(0);
+
+    const files = await backupFiles(logDir);
+    expect(files.length).toBe(1);
+    expect(files[0]).toMatch(/^pre-migration-23-.*\.jsonl$/);
+
+    // Counted by streaming rather than by reading the file in, so the assertion
+    // holds itself to the same bound it is holding the code under test to.
+    const backup = path.join(logDir, BACKUP_DIR, String(files[0]));
+    let lineCount = 0;
+    let firstLine = '';
+    for await (const line of createInterface({ input: fs.createReadStream(backup), crlfDelay: Infinity })) {
+      if (lineCount === 0) firstLine = line;
+      lineCount += 1;
+    }
+    expect(lineCount).toBe(ROWS);
+
+    // SAFETY: written by `backUpBeforeMigration23` from a row of the three
+    // declared columns this type names, exactly as the case above parses it.
+    const sampled = JSON.parse(firstLine) as SqlRow;
+    expect(sampled.id).toBe('req-000000');
+    expect(sampled.body_derived).toBe(1);
+    expect(String(sampled.skim_text).length).toBe(SKIM_CHARS);
+  }, 120_000);
 });
