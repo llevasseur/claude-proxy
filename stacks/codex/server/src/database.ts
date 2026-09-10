@@ -153,16 +153,12 @@ export class UsageDatabase {
     try {
       migrate(this.database);
     } catch (error) {
-      // Release the handle, and nothing else. The store stays exactly as it
-      // was found — a refusal the operator can act on, not a loss.
+      // Release the handle only; the store stays exactly as it was found.
       this.database.close();
       throw error;
     }
-    // Set after the ladder, deliberately. `journal_mode = WAL` is persistent:
-    // it rewrites the file header and creates the `-wal` and `-shm` sidecars.
-    // Doing that before deciding whether the store can be migrated would
-    // modify a database this build is about to refuse, which is the thing the
-    // refusal is supposed to avoid.
+    // Set after the ladder, deliberately: `journal_mode = WAL` is persistent
+    // and would modify a database this build is about to refuse.
     this.journalMode = String(this.database.prepare('PRAGMA journal_mode = WAL').get()?.journal_mode ?? 'unknown');
     this.schemaVersion = userVersion(this.database);
   }
@@ -335,15 +331,11 @@ function hasTables(database: InstanceType<typeof DatabaseSync>): boolean {
  * not its `-shm`. It used to: a `user_version` mismatch closed the handle,
  * `rmSync`'d all three files and re-ran the whole schema, which is ADR 0028's
  * rebuild-on-mismatch. [ADR 0047](../../../../docs/adrs/0047-sqlite-substrate-with-forward-only-migrations.md)
- * supersedes 0028 and states that a mismatch is never resolved by deletion,
- * and [ADR 0048](../../../../docs/adrs/0048-deletion-policy-split-by-tier.md)
- * puts the record tier out of reach of any deleting operation. Removing that
- * branch is what made bumping the version safe: with it still in place, the
- * first open after the bump would have wiped the corpus.
- *
- * A version this build cannot reach is a loud refusal, on the reasoning that
- * an operator who is told can restore a backup, while one whose store was
- * silently rebuilt cannot.
+ * supersedes 0028 and forbids resolving a mismatch by deletion, and
+ * [ADR 0048](../../../../docs/adrs/0048-deletion-policy-split-by-tier.md) puts
+ * the record tier out of reach of any deleting operation. A version this
+ * build cannot reach is a loud refusal instead: an operator who is told can
+ * restore a backup, while one whose store was silently rebuilt cannot.
  */
 function migrate(database: InstanceType<typeof DatabaseSync>): void {
   const from = userVersion(database);
