@@ -57,28 +57,36 @@
  * | `live-session-graph` | `/sessions/graph` | — | `session-transcripts` |
  * | `session-suggestions` | `/advice`, `/advice/sessions/$bucket` | — | `session-transcripts` |
  * | `device-system-prompt` | `/system-prompt` | — | `system-prompt-capture` |
- * | `project-memory` | `/projects`, `/projects/$project`, `…/memory/$name` | — | `session-transcripts` |
- * | `hooks-and-plugins` | `/hooks-plugins` | — | `session-transcripts` |
- * | `slash-commands` | `/commands`, `/commands/$command`, `…/$runId` | — | `session-transcripts` |
- * | `cli-internals` | `/cli-internals`, `/cli-internals/$id` | — | `session-transcripts` |
+ * | `project-memory` | `/projects`, `/projects/$project`, `…/memory/$name` | — | `project-scoped-memory` |
+ * | `hooks-and-plugins` | `/hooks-plugins` | — | `device-settings-file` |
+ * | `slash-commands` | `/commands`, `/commands/$command`, `…/$runId` | — | `user-defined-commands` |
+ * | `cli-internals` | `/cli-internals`, `/cli-internals/$id` | — | `installed-cli-bundle` |
  * | `skim-response-cache` | `/skim` | — | `skim-cache` |
- * | `proxy-filters` | `/filters` | — | `session-transcripts` |
- * | `withheld-tools` | `/withheld` | — | `session-transcripts` |
+ * | `proxy-filters` | `/filters` | — | `harness-injected-request-content` |
+ * | `withheld-tools` | `/withheld` | — | `device-settings-file` |
  * | `subscription-usage-windows` | usage meters | `subscription-usage-windows` | — |
  * | `live-usage-poll` | `proxy/usage-live.ts` | `oauth-usage-endpoint` | — |
  * | `additive-cache-accounting` | cache-read/creation columns | `additive-cache-counters` | — |
  * | `wire-system-prompt-outline` | `/trends/avg-system-prompt/$hash`, `…/section/$index` | `wire-system-blocks` | `system-prompt-capture` |
  * | `prompt-cache-breakpoint-repair` | `proxy/cache-breakpoint.ts` | `prompt-cache-breakpoints` | `system-prompt-capture` |
  *
- * **The harness axis reuses ticket 01's closed `HarnessCapability` union rather
- * than growing one of its own.** That union has three members and this module
- * does not own the file it lives in, so a capability whose harness dependency is
- * not one of the three declares the nearest established member — which is why
- * the device-config surfaces (`hooks-and-plugins`, `slash-commands`,
- * `cli-internals`, `project-memory`) all gate on `session-transcripts`: what
- * they actually share is "this harness is the one whose device state and session
- * records this repository can read". Widening that union belongs to whichever
- * ticket owns `harness-adapter.ts`.
+ * **The harness axis is the one closed `HarnessCapability` union in
+ * `harness-adapter.ts`, and every gate above names the state it actually needs.**
+ * The union carries eight members: the three that describe what a harness records
+ * about a session (`session-transcripts`, `system-prompt-capture`, `skim-cache`)
+ * and five that describe what it leaves on the device or puts into its own
+ * requests (`device-settings-file`, `user-defined-commands`,
+ * `project-scoped-memory`, `installed-cli-bundle`,
+ * `harness-injected-request-content`).
+ *
+ * `session-transcripts` therefore means transcripts and nothing else — the three
+ * capabilities that declare it are the three that parse
+ * `logs/sessions/<threadId>.md`. **Six gates used to declare it without needing
+ * one**, and two of those six were not among the four the widening was chartered
+ * to fix: `withheld-tools` reads `~/.claude/settings.json`, the same file
+ * `hooks-and-plugins` reads, and `proxy-filters` describes what the proxy strips
+ * from requests this harness shapes. Both were found by re-deriving each gate
+ * from its module rather than from the list of known ones.
  *
  * **The route modules themselves are deliberately untouched.** Gating happens at
  * this capability layer, so `stacks/claude/admin/src/routes/` needs no edit to
@@ -370,32 +378,32 @@ const DECLARATIONS: readonly CapabilityDeclaration[] = Object.freeze([
     'Project memory browser',
     '/projects, /projects/$project, /projects/$project/memory/$name',
     null,
-    'session-transcripts',
-    "Browses the per-project memory files Claude Code's own project directories hold.",
+    'project-scoped-memory',
+    'Browses the per-project memory files the harness keeps under its own project directories, keyed by project.',
   ),
   capability(
     'hooks-and-plugins',
     'Hooks and plugins inventory',
     '/hooks-plugins',
     null,
-    'session-transcripts',
-    'Inventories `.claude/` hooks, plugins and skills — device state only this harness maintains.',
+    'device-settings-file',
+    'Inventories the hooks, plugins and skills declared in the device settings file; nothing it renders comes from a session.',
   ),
   capability(
     'slash-commands',
     'Slash commands',
     '/commands, /commands/$command, /commands/$command/$runId',
     null,
-    'session-transcripts',
-    "Records runs of the device's slash commands, which are a Claude Code construct.",
+    'user-defined-commands',
+    'Takes its step catalogue from the on-disk command definitions and finds runs by the invocation envelope the harness writes into its own requests.',
   ),
   capability(
     'cli-internals',
     'CLI internals',
     '/cli-internals, /cli-internals/$id',
     null,
-    'session-transcripts',
-    'Inspects the Claude Code CLI bundle itself; no other harness ships that bundle.',
+    'installed-cli-bundle',
+    'Resolves functions out of the installed bundle text, so it needs that bundle readable on the device at all.',
   ),
   capability(
     'skim-response-cache',
@@ -410,16 +418,16 @@ const DECLARATIONS: readonly CapabilityDeclaration[] = Object.freeze([
     'Proxy filters',
     '/filters',
     null,
-    'session-transcripts',
-    'Counts the `<system-reminder>` blocks and withheld tools this harness injects into its own requests.',
+    'harness-injected-request-content',
+    'Documents the injected reminders and undeniable tools the proxy strips, which exist only because the harness puts them in requests its own settings cannot suppress.',
   ),
   capability(
     'withheld-tools',
     'Withheld tools',
     '/withheld',
     null,
-    'session-transcripts',
-    'Lists tools the harness declined to add, which is a fact about the harness and not about the wire.',
+    'device-settings-file',
+    'Resolves deny rules and `disable*` keys out of the same device settings file the hooks inventory reads.',
   ),
   capability(
     'subscription-usage-windows',
