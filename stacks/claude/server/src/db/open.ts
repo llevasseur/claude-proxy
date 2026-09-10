@@ -1068,8 +1068,7 @@ function backUpBeforeMigration23(db: DatabaseSync, logDir: string): void {
     : hasColumn(db, 'request', 'skim_text')
       ? ''
       : null;
-  const skimColumn =
-    skimSource === null ? 'NULL AS skim_text' : skimSource === '' ? 'r.skim_text' : 's.skim_text';
+  const skimColumn = skimSource === null ? 'NULL AS skim_text' : skimSource === '' ? 'r.skim_text' : 's.skim_text';
 
   const rows = db
     .prepare(`SELECT r.id AS id, r.body_derived AS body_derived, ${skimColumn} FROM request r ${skimSource ?? ''}`)
