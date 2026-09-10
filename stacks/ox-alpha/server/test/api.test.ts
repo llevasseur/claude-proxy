@@ -40,7 +40,7 @@ describe('Bike API', () => {
       ready: true,
       server: { status: 'ready' },
       proxy: { status: 'healthy', state: 'ready' },
-      database: { status: 'ready', schemaVersion: 1 },
+      database: { status: 'ready', schemaVersion: 2 },
       ingest: { rejectedSidecars: 0 },
       sse: { subscribers: 0 },
     });
