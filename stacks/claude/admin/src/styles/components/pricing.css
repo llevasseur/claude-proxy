@@ -213,22 +213,16 @@
   .pricing-field-error:empty {
     display: none;
   }
-  /* In a table row a field is too narrow to carry its own message, so the row's
-   * errors are collected into one full-width line beneath the fields. */
-  .pricing-table .pricing-field-error {
-    display: none;
-  }
-  .pricing-field-note,
-  .pricing-row-errors {
+  /* The message shows in the table row too. An earlier draft hid it here on the
+   * theory that a cell was too narrow — but the edit row is a single spanning cell
+   * with a wrapping form, so there is room, and hiding it left a bad rate with a
+   * coral border and nothing to read. A `role="alert"` on a `display: none` element
+   * is not announced either, so hiding it cost the screen-reader path as well. */
+  .pricing-field-note {
     flex-basis: 100%;
     font-size: var(--text-4);
     line-height: 1.45;
-  }
-  .pricing-field-note {
     color: var(--muted);
-  }
-  .pricing-row-errors {
-    color: var(--coral);
   }
   .pricing-model-input {
     flex: 2 1 14rem;
