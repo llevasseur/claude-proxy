@@ -57,19 +57,24 @@ function writeVersionOneStore(
 ): readonly string[] {
   const database = new DatabaseSync(path);
   database.exec(V1_SCHEMA);
-  const serialized = sidecars.map((value) => JSON.stringify(value));
-  sidecars.forEach((value, index) => {
-    database
-      .prepare('INSERT INTO usage_records (record_id, filename, event_timestamp, sidecar_json) VALUES (?, ?, ?, ?)')
-      .run(value.recordId, `${value.recordId}.audit.json`, value.timestamp, serialized[index] as string);
-  });
+  // Pairing each sidecar with its own serialization keeps the blob and the row it
+  // was written from together, rather than re-indexing a parallel array.
+  const pairs = sidecars.map((value) => ({ value, json: JSON.stringify(value) }));
+  const insert = database.prepare(
+    'INSERT INTO usage_records (record_id, filename, event_timestamp, sidecar_json) VALUES (?, ?, ?, ?)',
+  );
+  for (const { value, json } of pairs) {
+    insert.run(value.recordId, `${value.recordId}.audit.json`, value.timestamp, json);
+  }
   if (version !== 1) database.exec(`PRAGMA user_version = ${version}`);
   database.close();
-  return serialized;
+  return pairs.map((pair) => pair.json);
 }
 
 function readStoredRows(path: string): readonly StoredRow[] {
   const database = new DatabaseSync(path);
+  // SAFETY: the six selected columns are exactly the six `StoredRow` declares, and
+  // the four added by the 1 to 2 step are nullable, which that type reflects.
   const rows = database
     .prepare(
       'SELECT record_id, sidecar_json, provider, harness, model, adapter_version FROM usage_records ORDER BY record_id',
@@ -80,19 +85,18 @@ function readStoredRows(path: string): readonly StoredRow[] {
 }
 
 describe('ox usage store migration', () => {
-  let directory = '';
-  let cleanup: () => Promise<void> = async () => undefined;
+  let cleanup: (() => Promise<void>) | null = null;
   let path = '';
 
   beforeEach(async () => {
     const temporary = await temporaryDirectory();
-    directory = temporary.path;
     cleanup = temporary.cleanup;
-    path = join(directory, 'usage.db');
+    path = join(temporary.path, 'usage.db');
   });
 
   afterEach(async () => {
-    await cleanup();
+    await cleanup?.();
+    cleanup = null;
   });
 
   it('creates a fresh store at the current version', () => {
@@ -152,6 +156,8 @@ describe('ox usage store migration', () => {
     store.close();
 
     for (const row of readStoredRows(path)) {
+      // SAFETY: the blob was written by `writeVersionOneStore` from a validated
+      // sidecar, so it carries a string `model`. Only that field is read here.
       const blob = JSON.parse(row.sidecar_json) as { model: string };
       expect(row.model).toBe(blob.model);
     }
@@ -159,9 +165,9 @@ describe('ox usage store migration', () => {
 
   it('stamps all four columns at ingest', () => {
     const store = new UsageDatabase(path);
-    expect(store.ingest('delta.audit.json', sidecar('delta', '2026-08-19T13:00:00.000Z', { model: 'gpt-5' }), new Date())).toBe(
-      true,
-    );
+    expect(
+      store.ingest('delta.audit.json', sidecar('delta', '2026-08-19T13:00:00.000Z', { model: 'gpt-5' }), new Date()),
+    ).toBe(true);
     store.close();
 
     const rows = readStoredRows(path);
@@ -187,7 +193,16 @@ describe('ox usage store migration', () => {
            (record_id, filename, event_timestamp, sidecar_json, provider, harness, model, adapter_version)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run('echo', 'echo.audit.json', '2026-08-19T14:00:00.000Z', payload, 'ox-alpha', 'opencode', 'from-the-column', 1);
+      .run(
+        'echo',
+        'echo.audit.json',
+        '2026-08-19T14:00:00.000Z',
+        payload,
+        'ox-alpha',
+        'opencode',
+        'from-the-column',
+        1,
+      );
     raw.close();
 
     const reopened = new UsageDatabase(path);
@@ -219,21 +234,21 @@ describe('ox usage store migration', () => {
     // `provider` here would fail, and that it would fail is the assertion.
     expect(statSync(path).ino).toBe(inodeBefore);
     const raw = new DatabaseSync(path);
-    const rows = raw
-      .prepare('SELECT sidecar_json FROM usage_records ORDER BY record_id')
-      .all() as unknown as Array<{ sidecar_json: string }>;
+    // SAFETY: each of the three reads names the column it asserts on — the selected
+    // `sidecar_json`, the single column `PRAGMA user_version` answers with, and the
+    // `name` column of `PRAGMA table_info`. No other field of any row is touched.
+    const rows = raw.prepare('SELECT sidecar_json FROM usage_records ORDER BY record_id').all() as unknown as Array<{
+      sidecar_json: string;
+    }>;
+    // SAFETY: `PRAGMA user_version` answers one row whose one column it names.
     const version = raw.prepare('PRAGMA user_version').get() as unknown as { user_version: number };
+    // SAFETY: only the `name` column of `PRAGMA table_info` is read.
     const columns = raw.prepare('PRAGMA table_info(usage_records)').all() as unknown as Array<{ name: string }>;
     raw.close();
 
     expect(rows.map((row) => row.sidecar_json)).toEqual(before);
     expect(version.user_version).toBe(9);
-    expect(columns.map((column) => column.name)).toEqual([
-      'record_id',
-      'filename',
-      'event_timestamp',
-      'sidecar_json',
-    ]);
+    expect(columns.map((column) => column.name)).toEqual(['record_id', 'filename', 'event_timestamp', 'sidecar_json']);
   });
 
   it('never deletes or recreates the database, its -wal or its -shm', () => {

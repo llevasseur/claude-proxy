@@ -169,6 +169,8 @@ function inRange(timestamp: string, range: ResolvedCalendarRange): boolean {
 }
 
 function userVersion(database: DatabaseSync): number {
+  // SAFETY: `PRAGMA user_version` answers exactly one row with exactly one column,
+  // which SQLite names `user_version` — which is what `VersionRow` declares.
   return (database.prepare('PRAGMA user_version').get() as unknown as VersionRow).user_version;
 }
 
@@ -310,6 +312,7 @@ export class UsageDatabase {
     // The blob is still parsed — it is the source of truth for everything else this
     // view shows — but the record's *identity* comes from the materialised column,
     // which is the outcome ADR 0061 requires of every read path.
+    // SAFETY: the two selected columns are exactly the two `ModelJsonRow` declares.
     const rows = this.database
       .prepare('SELECT model, sidecar_json FROM usage_records ORDER BY event_timestamp DESC, record_id ASC')
       .all() as unknown as ModelJsonRow[];
@@ -338,6 +341,7 @@ export class UsageDatabase {
 
   sidecarsInRange(range: ResolvedCalendarRange, models: readonly string[]): readonly SanitizedAuditSidecarV1[] {
     // Model selection reads the column, for the reason given in `history`.
+    // SAFETY: the two selected columns are exactly the two `ModelJsonRow` declares.
     const rows = this.database
       .prepare('SELECT model, sidecar_json FROM usage_records ORDER BY event_timestamp, record_id')
       .all() as unknown as ModelJsonRow[];
