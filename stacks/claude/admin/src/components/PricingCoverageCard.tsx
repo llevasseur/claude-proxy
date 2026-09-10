@@ -1,7 +1,8 @@
-import { providerUnavailableNotice, storeUnreadable, type UnavailableNotice } from '@agent-proxy/claude-core';
+import { providerUnavailableNotice, type UnavailableNotice } from '@agent-proxy/claude-core';
 import { useQuery } from '@tanstack/react-query';
-import { getPricingCoverage, type PricingCoverageReason, type PricingCoverageResponse } from '../api';
+import type { PricingCoverageReason } from '../api';
 import { fmtInt, fmtPct } from '../format';
+import { readProvider } from '../provider-fanout';
 import { Unavailable } from './Unavailable';
 
 /**
@@ -23,11 +24,19 @@ import { Unavailable } from './Unavailable';
 /**
  * One query for both readers, keyed by the day so React Query serves the cost
  * tile and this card from a single fetch.
+ *
+ * It goes through `readProvider` rather than the plain `read` helper for one
+ * reason, and it is the ticket's own rule turned on itself: this route answers a
+ * failure with a **typed** `unavailableReason`, and `unwrap` reduces any error to
+ * a message string. Reading it through the envelope keeps the server's own
+ * classification — so a store that was never created is not reported as one that
+ * is broken, which is the distinction ADR 0060 exists to preserve and which this
+ * card would otherwise flatten while claiming to be the surface that does not.
  */
 export function usePricingCoverage(date: string | undefined) {
   return useQuery({
     queryKey: ['pricing', 'coverage', date ?? null],
-    queryFn: () => getPricingCoverage(date),
+    queryFn: () => readProvider('anthropic', '/api/pricing/coverage', { date }),
     retry: false,
   });
 }
@@ -42,6 +51,18 @@ export function reasonNotice(reason: PricingCoverageReason): UnavailableNotice {
     severity: reason.severity,
   };
 }
+
+/**
+ * The card's title names the **gap**, not the coverage.
+ *
+ * A sibling card on this same page is called "Rate coverage" and answers a
+ * genuinely different question — what share of *spend* rests on a fallback rate
+ * rather than a published one. "Pricing coverage" beside it was a near-synonym
+ * for a different fact, which is worse than a clash: two titles that sound alike
+ * teach a reader the cards are interchangeable. This one exists to surface what
+ * cannot be priced at all, so it says that, and "N% priced" stays the headline.
+ */
+const CARD_LABEL = 'Unpriced records';
 
 /** How the meter presents itself: the chrome's tone class, and the chip's words. */
 interface CoverageTone {
@@ -62,18 +83,20 @@ function coverageTone(unpriced: number, total: number): CoverageTone {
 
 export function PricingCoverageCard({ date }: { date?: string }) {
   const coverage = usePricingCoverage(date);
+  const envelope = coverage.data;
+  if (!envelope) return null;
 
-  if (coverage.error) {
+  if (envelope.unavailableReason !== null) {
     // The rate tables live only in the database, so there is no file scan behind
-    // this one and an empty answer would be a lie. The same treatment a cost uses
-    // renders the store's absence — one vocabulary, per ADR 0060.
-    const notice = providerUnavailableNotice(
-      storeUnreadable('anthropic', 'unknown', 'pricing coverage could not be read from this server'),
-    );
+    // this one and an empty answer would be a lie. The reason is the server's own
+    // rather than one composed here, so a store that has never been created and a
+    // store that is broken stay two states — and its severity, not a hardcoded
+    // tone, decides how loud the card is.
+    const notice = providerUnavailableNotice(envelope.unavailableReason);
     return (
-      <div className='card usage-meter coverage tone-warn'>
+      <div className={`card usage-meter coverage tone-${notice.severity === 'attention' ? 'warn' : 'signal'}`}>
         <div className='usage-meter-head'>
-          <span className='stat-label'>Pricing coverage</span>
+          <span className='stat-label'>{CARD_LABEL}</span>
         </div>
         <div className='coverage-readout'>
           <Unavailable notice={notice} />
@@ -82,17 +105,14 @@ export function PricingCoverageCard({ date }: { date?: string }) {
     );
   }
 
-  const data: PricingCoverageResponse | undefined = coverage.data;
-  if (!data) return null;
-
-  const { summary, reasons } = data.corpus;
+  const { summary, reasons } = envelope.data.corpus;
   const { total, fromTable, fromFallback, unpriced } = summary;
 
   if (total === 0) {
     return (
       <div className='card usage-meter coverage tone-signal'>
         <div className='usage-meter-head'>
-          <span className='stat-label'>Pricing coverage</span>
+          <span className='stat-label'>{CARD_LABEL}</span>
         </div>
         {/* A real measurement of nothing, not an absence: there is no traffic to
             price yet, which is a different fact from traffic we cannot price. */}
@@ -124,7 +144,7 @@ export function PricingCoverageCard({ date }: { date?: string }) {
         {unpricedPct > 0 && <span className='coverage-seg is-unpriced' style={{ width: `${unpricedPct}%` }} />}
       </div>
       <div className='usage-meter-head'>
-        <span className='stat-label'>Pricing coverage</span>
+        <span className='stat-label'>{CARD_LABEL}</span>
         <span className='usage-chip'>{chip}</span>
       </div>
       <div className='coverage-readout'>

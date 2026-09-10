@@ -220,7 +220,13 @@ function OverviewBody({
   // *day's* rather than the corpus's — one unpriced record in the archive says
   // nothing about today, and condemning every day for it would be its own lie.
   const coverage = usePricingCoverage(date);
-  const dayUnpriced = coverage.data?.day?.summary.unpriced ?? 0;
+  // An envelope, so an unreachable or unreadable store leaves the tiles exactly as
+  // they were rather than marking every one of them unavailable. That is the right
+  // default and not a shortcut: not knowing whether a day is fully priced is a
+  // different state from knowing it is not, and the coverage card is the surface
+  // that reports the store's own absence.
+  const dayCoverage = coverage.data?.unavailableReason === null ? coverage.data.data.day : null;
+  const dayUnpriced = dayCoverage?.summary.unpriced ?? 0;
   // Muted rather than amber: the fault and its fix are reported once, on the
   // coverage card below. A tile repeating it in the same colour would report one
   // problem twice, which is what trains a reader to stop looking.
