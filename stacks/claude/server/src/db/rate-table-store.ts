@@ -57,14 +57,20 @@ export interface ProxyFallbackRecord {
  * A rate row as SQLite answers it. Every rate column is declared `REAL` and
  * nullable, so each is a number or null; `model`/`proxy` and `updated_at` are
  * `TEXT NOT NULL`.
+ *
+ * Written as a type alias rather than an interface on purpose: an alias carries
+ * an implicit index signature, which is what makes it comparable to the open
+ * `Record<string, SQLOutputValue>` row type `node:sqlite` returns. An interface
+ * has none, so narrowing to it would need a chained assertion through `unknown`
+ * — discarding the very type evidence these declarations exist to state.
  */
-interface RateColumns {
+type RateColumns = {
   input_per_mtok: number | null;
   output_per_mtok: number | null;
   cache_write_per_mtok: number | null;
   cache_read_per_mtok: number | null;
   updated_at: string;
-}
+};
 
 type ModelRateColumns = RateColumns & { model: string };
 type ProxyRateColumns = RateColumns & { proxy: string };
@@ -83,12 +89,8 @@ function toRateRow(columns: RateColumns): RateRow {
 /** Every rate row, model order, as stored. */
 export function listModelRates(db: DatabaseSync): ModelRateRecord[] {
   // SAFETY: the four rate columns are declared REAL and nullable and `model` and
-  // `updated_at` are TEXT NOT NULL, which is what `ModelRateColumns` states. The
-  // hop through `unknown` is what `node:sqlite`'s open `Record<string,
-  // SQLOutputValue>` row type requires of any narrowing to named columns.
-  const rows = db
-    .prepare(`SELECT model, ${RATE_COLUMNS} FROM model_rate ORDER BY model`)
-    .all() as unknown as ModelRateColumns[];
+  // `updated_at` are TEXT NOT NULL, which is what `ModelRateColumns` states.
+  const rows = db.prepare(`SELECT model, ${RATE_COLUMNS} FROM model_rate ORDER BY model`).all() as ModelRateColumns[];
   return rows.map((row) => ({ model: row.model, rates: toRateRow(row), updatedAt: row.updated_at }));
 }
 
