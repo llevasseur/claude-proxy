@@ -148,7 +148,6 @@ Taken before charting; re-measure rather than trusting these if a ticket turns o
 | 16 | ui-fallback-stamp | [provider-seam-16-ui-fallback-stamp](provider-seam-16-ui-fallback-stamp.md) | `task/provider-seam-16-ui-fallback-stamp` | todo | |
 | 17 | ui-interrupted-resumed | [provider-seam-17-ui-interrupted-resumed](provider-seam-17-ui-interrupted-resumed.md) | `task/provider-seam-17-ui-interrupted-resumed` | todo | |
 | 18 | docs-feature-and-spec | [provider-seam-18-docs-feature-and-spec](provider-seam-18-docs-feature-and-spec.md) | `task/provider-seam-18-docs-feature-and-spec` | todo | |
-| 20 | harness-capability-union | [provider-seam-20-harness-capability-union](provider-seam-20-harness-capability-union.md) | `task/provider-seam-20-harness-capability-union` | in-progress | |
 | zz | retire-done-plans | [provider-seam-zz-retire-done-plans](provider-seam-zz-retire-done-plans.md) | `task/provider-seam-zz-retire-done-plans` | todo | Final ticket — deletes every plan. Execute last. |
 
 <!--
@@ -232,6 +231,26 @@ A gate is a commit on `wayfinder/provider-seam` with a green verify and an hones
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 20 — harness-capability-union · 2026-09-10 · [#305](https://github.com/llevasseur/claude-proxy/pull/305)
+
+`HarnessCapability` widened from three members to eight, so the device-config gates name
+the harness state they read instead of borrowing `session-transcripts` as the nearest
+established member. Six gates were repointed rather than the four the ticket chartered:
+re-deriving each gate from its own module found `withheld-tools` reading the same
+`~/.claude/settings.json` as `hooks-and-plugins`, and `proxy-filters` describing content
+the harness itself shapes. `session-transcripts` now means transcripts alone, pinned by a
+test to the three capabilities that parse `logs/sessions/<threadId>.md`.
+
+**The pull request sat open for sixteen days and had never been gated once.** Its branch
+recorded zero workflow runs despite `verify.yml` carrying a bare `pull_request:` trigger,
+so the only evidence it passed was the body's own claim. It was merged after a real green
+run at `5295feb`, and the push trigger now names this campaign's base branch — see the
+correction above.
+
+**Merged after the base was resynced, not before.** `wayfinder/provider-seam` was 225
+commits behind `main` at the time and cut from a `the-great-merge` that no longer exists;
+the resync landed first so this ticket's gate measured the tree the next ticket inherits.
 
 ### 02 — sidecar-v2-provider-discriminator · 2026-08-25 · [#298](https://github.com/llevasseur/claude-proxy/pull/298)
 
