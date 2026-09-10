@@ -2,7 +2,16 @@ import fs from 'node:fs';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { type AuditSession, type AuditSidecar, type AuditSkim, isAuditSidecar } from '@agent-proxy/claude-core';
+import {
+  type AuditSession,
+  type AuditSidecar,
+  type AuditSkim,
+  HARNESS_IDS,
+  type HarnessId,
+  isAuditSidecar,
+  PROVIDER_IDS,
+  type ProviderId,
+} from '@agent-proxy/claude-core';
 import { commandStorePath } from '../command-runs.js';
 import { deriveFromBody } from '../derive.js';
 import { asError } from '../errors.js';
@@ -13,6 +22,7 @@ import {
   jsonNumber,
   jsonObject,
   jsonString,
+  numberField,
   stringField,
 } from '../json.js';
 import { resolveSessionsDir } from '../sessions.js';
@@ -111,6 +121,8 @@ async function sourceDirs(logDir: string): Promise<string[]> {
 interface Row {
   stem: string;
   sidecar: AuditSidecar | null;
+  /** What produced this record, for migration 23's columns. Null whenever `sidecar` is. */
+  stamp: RecordStampColumns | null;
   /** Set when the file could not become a row: why not. */
   reason: 'parse_error' | 'not_audit_sidecar' | null;
   /** A usable ISO timestamp off an invalid-but-parsed object, for day filtering. */
@@ -151,6 +163,70 @@ function flag(value: JsonInput): number | null {
   return recorded === undefined ? null : bool(recorded);
 }
 
+/**
+ * The record-stamp columns migration 23 added, resolved for one sidecar.
+ *
+ * `model` is the stamp's fourth field in `RecordStamp` and has been its own
+ * column since slice 1, so it is bound from `s.model` with the rest of the row
+ * rather than repeated here.
+ */
+interface RecordStampColumns {
+  readonly provider: ProviderId;
+  readonly harness: HarnessId;
+  /** Null for a v1 sidecar, which records no adapter version to read. */
+  readonly adapterVersion: number | null;
+}
+
+/**
+ * The adapter pair that captured every sidecar this stack has ever written: the
+ * Anthropic wire, in front of Claude Code.
+ *
+ * These are the two axes `CapturingAdapters` in
+ * `stacks/claude/core/src/sidecar.ts` requires a caller to name when it reads a
+ * v1 file, and they are stated **separately** because
+ * `docs/adrs/0040-three-providers-and-three-harnesses.md` forbids deriving
+ * either from the other. Migration 23's backfill writes these same two values
+ * over the rows captured before the columns existed.
+ */
+const CAPTURING_PROVIDER: ProviderId = 'anthropic';
+const CAPTURING_HARNESS: HarnessId = 'claude-code';
+
+/**
+ * Resolve one sidecar's stamp, or `null` when the file states an id no adapter
+ * is registered for.
+ *
+ * A v2 sidecar states its own provider and harness and they are used as stated.
+ * A v1 sidecar states neither, and both come from the capturing adapter above —
+ * the resolution `readSidecar` already performs for a v1 file.
+ *
+ * **A stated-but-unregistered id resolves to nothing rather than to the
+ * capturing adapter.** Quietly reading one provider's record as another's is the
+ * exact corruption the v2 discriminator was added to prevent, and `readSidecar`
+ * refuses it loudly for the same reason; here the row is skipped and counted
+ * instead, because one unreadable file must not halt a pass over the corpus.
+ */
+function resolveRecordStamp(parsed: JsonInput): RecordStampColumns | null {
+  const statedProvider = stringField(parsed, 'provider');
+  const statedHarness = stringField(parsed, 'harness');
+  // Widened to `string` for the membership test so the check reads a plain
+  // string against the registry, rather than asserting the id it is checking for.
+  const providerIds: readonly string[] = PROVIDER_IDS;
+  const harnessIds: readonly string[] = HARNESS_IDS;
+  if (statedProvider !== undefined && !providerIds.includes(statedProvider)) return null;
+  if (statedHarness !== undefined && !harnessIds.includes(statedHarness)) return null;
+
+  const statedVersion = numberField(parsed, 'adapterVersion');
+  return {
+    // SAFETY: the guard above returned for every value the registry does not
+    // name, so what reaches here is either undefined or a registered id.
+    provider: (statedProvider as ProviderId | undefined) ?? CAPTURING_PROVIDER,
+    // SAFETY: the same invariant as the line above.
+    harness: (statedHarness as HarnessId | undefined) ?? CAPTURING_HARNESS,
+    adapterVersion:
+      statedVersion !== undefined && Number.isInteger(statedVersion) && statedVersion > 0 ? statedVersion : null,
+  };
+}
+
 /** Read one sidecar file into the shape the insert statements want. */
 async function readRow(dir: string, sourceDir: string, stem: string, names: Set<string>): Promise<Row> {
   const rel = (name: string) => (sourceDir === LIVE ? name : `${sourceDir}/${name}`);
@@ -161,17 +237,25 @@ async function readRow(dir: string, sourceDir: string, stem: string, names: Set<
   try {
     parsed = JSON.parse(await readFile(path.join(dir, `${stem}${AUDIT_SUFFIX}`), 'utf8'));
   } catch {
-    return { stem, sidecar: null, reason: 'parse_error', timestamp: null, mdPath, requestPath };
+    return { stem, sidecar: null, stamp: null, reason: 'parse_error', timestamp: null, mdPath, requestPath };
   }
 
   if (!isAuditSidecar(parsed)) {
     // Parsed, but not a usable audit row. The file-backed reader still places it
     // by its own timestamp when it has one, so keep that here too.
     const ts = stringField(parsed, 'timestamp') ?? null;
-    return { stem, sidecar: null, reason: 'not_audit_sidecar', timestamp: ts, mdPath, requestPath };
+    return { stem, sidecar: null, stamp: null, reason: 'not_audit_sidecar', timestamp: ts, mdPath, requestPath };
+  }
+  const stamp = resolveRecordStamp(parsed);
+  if (stamp === null) {
+    // States a provider or harness no adapter is registered for. Treated like any
+    // other parsed-but-unusable file rather than reattributed to this stack's own
+    // adapter pair — see `resolveRecordStamp`.
+    const ts = stringField(parsed, 'timestamp') ?? null;
+    return { stem, sidecar: null, stamp: null, reason: 'not_audit_sidecar', timestamp: ts, mdPath, requestPath };
   }
   const sidecar: AuditSidecar = parsed;
-  return { stem, sidecar, reason: null, timestamp: sidecar.timestamp, mdPath, requestPath };
+  return { stem, sidecar, stamp, reason: null, timestamp: sidecar.timestamp, mdPath, requestPath };
 }
 
 interface Statements {
@@ -204,7 +288,8 @@ function prepare(db: DatabaseSync): Statements {
         req_system_hash, req_system_blocks, req_system_sections,
         skim_present, skim_enabled, skim_served_from_cache, skim_saved_input_tokens, skim_cache_key,
         cache_breakpoint_injected, cache_breakpoint_observed, cache_breakpoint_declined_by,
-        rate_limit_present, md_path, request_path, blob_evicted
+        rate_limit_present, md_path, request_path, blob_evicted,
+        provider, harness, adapter_version
       ) VALUES (
         ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?, ?, ?, ?,
@@ -213,7 +298,8 @@ function prepare(db: DatabaseSync): Statements {
         ?, ?, ?,
         ?, ?, ?, ?, ?,
         ?, ?, ?,
-        ?, ?, ?, ?
+        ?, ?, ?, ?,
+        ?, ?, ?
       )
       ON CONFLICT(id) DO UPDATE SET
         source_dir          = excluded.source_dir,
@@ -274,12 +360,15 @@ function writeBatch(db: DatabaseSync, st: Statements, sourceDir: string, rows: R
   try {
     for (const row of rows) {
       const evicted = bool(row.mdPath === null && row.requestPath === null);
-      if (!row.sidecar) {
+      // `stamp` is set for exactly the rows `sidecar` is, so testing both narrows
+      // the pair together rather than asserting one from the other.
+      if (!row.sidecar || !row.stamp) {
         st.insertSkipped.run(row.stem, sourceDir, row.reason ?? 'unknown', row.timestamp);
         stats.skipped += 1;
         continue;
       }
       const s = row.sidecar;
+      const stamp = row.stamp;
       const session = s.session;
       const skim = s.skim;
       // Decoded, not trusted: `rateLimit` is one of the fields `isAuditSidecar` never
@@ -330,6 +419,9 @@ function writeBatch(db: DatabaseSync, st: Statements, sourceDir: string, rows: R
         row.mdPath,
         row.requestPath,
         evicted,
+        stamp.provider,
+        stamp.harness,
+        stamp.adapterVersion,
       );
       s.tools.forEach((tool, ord) => {
         st.insertTool.run(row.stem, ord, String(tool?.name ?? ''), num(tool?.bytes), num(tool?.estTokens));
