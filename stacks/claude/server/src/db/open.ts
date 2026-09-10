@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
@@ -35,7 +36,7 @@ export function resolveDbPath(logDir: string): string {
  * Schema version, tracked in `PRAGMA user_version`. Bump it and add a migration
  * step below when the shape changes, so an existing file survives a `git pull`.
  */
-export const SCHEMA_VERSION = 22;
+export const SCHEMA_VERSION = 23;
 
 /**
  * Slice 1 — audit rows only. The `.md` and `.request.txt` bodies stay on disk;
@@ -848,6 +849,70 @@ CREATE TABLE IF NOT EXISTS route_observation (
 CREATE INDEX IF NOT EXISTS route_observation_route_idx ON route_observation(route, id DESC);
 `;
 
+/**
+ * The record stamp — what produced this record — per the dividing line in
+ * `docs/adrs/0065-cost-is-resolved-at-read-time.md`.
+ *
+ * ## Three columns, not four
+ *
+ * `RecordStamp` in `stacks/claude/core/src/adapter-seam.ts` names four fields, and
+ * `model` is already the fourth: `request.model` has existed since slice 1 and is
+ * `NOT NULL`. So this slice adds the three that are missing. Re-adding `model`
+ * would fail outright with `duplicate column name`, and inventing a second model
+ * column beside it would give one record two answers to the same question.
+ *
+ * ## `cost` and `pricing_source` are absent, and their absence is the decision
+ *
+ * 0065 resolves both at read time from the rate table, because each is a function
+ * of a table an operator may edit at any moment — storing them here would be a
+ * cache of mutable state with no invalidation rule. `request` has never carried a
+ * cost column and does not gain one now, which is also what keeps
+ * [ADR 0038](../../../../../docs/adrs/0038-retroactive-catalogue-pricing.md)'s
+ * promise: with nothing derived frozen onto a row, every read already prices
+ * against today's catalogue and repricing needs no migration at all.
+ *
+ * ## Why all three are nullable
+ *
+ * SQLite cannot add a `NOT NULL` column to a populated table without a default,
+ * and a default is exactly the guess this ticket refuses. Nullable columns plus an
+ * explicit backfill keep "unknown" expressible, which the next section needs.
+ *
+ * ## The backfill states both axes independently
+ *
+ * Every row already in this file was captured by this repository's claude proxy,
+ * which speaks the Anthropic wire in front of Claude Code. So `provider` is
+ * `anthropic` and `harness` is `claude-code` — **two separate facts about the
+ * capturing adapter, neither derived from the other**, which is what
+ * [ADR 0040](../../../../../docs/adrs/0040-three-providers-and-three-harnesses.md)
+ * requires and what `CapturingAdapters` in `stacks/claude/core/src/sidecar.ts`
+ * already demands of any caller resolving a v1 sidecar. This is that same v1
+ * resolution applied in bulk, not an inference from one column to the other.
+ *
+ * `adapter_version` is left **null on purpose**. These rows were captured before
+ * the adapter contract in `stacks/claude/core/src/provider-adapter.ts` existed, so
+ * they were produced by no versioned adapter at all. Writing `1` would claim a
+ * provenance they do not have; null is the honest "explicitly unknown" and readers
+ * must treat it as such. New rows get the real value from the sidecar — see
+ * `ingest.ts`.
+ *
+ * Nothing here deletes, recreates or truncates anything: two `ADD COLUMN`s, one
+ * `ADD COLUMN`, and one `UPDATE` over columns that were null a moment ago.
+ * `docs/adrs/0047-sqlite-substrate-with-forward-only-migrations.md` forbids
+ * resolving a version mismatch by deletion and
+ * `docs/adrs/0048-deletion-policy-split-by-tier.md` forbids deleting the record
+ * tier by any operation.
+ */
+const SCHEMA_V23 = `
+ALTER TABLE request ADD COLUMN provider        TEXT;
+ALTER TABLE request ADD COLUMN harness         TEXT;
+ALTER TABLE request ADD COLUMN adapter_version INTEGER;
+
+UPDATE request
+   SET provider = 'anthropic',
+       harness  = 'claude-code'
+ WHERE provider IS NULL OR harness IS NULL;
+`;
+
 const SCHEMA_V4 = `
 DROP TABLE IF EXISTS command_run_pattern;
 DROP TABLE IF EXISTS command_run_step;
@@ -944,8 +1009,101 @@ export function openDb(logDir: string): DatabaseSync {
   db.exec('PRAGMA journal_mode = WAL');
   db.exec('PRAGMA synchronous = NORMAL');
   db.exec('PRAGMA foreign_keys = ON');
+  backUpBeforeMigration23(db, logDir);
   migrate(db);
   return db;
+}
+
+/** Where `backUpBeforeMigration23` writes, relative to the log directory. */
+export const BACKUP_DIR = 'backups';
+
+/**
+ * Copy `request_skim` and the `body_derived` flag to JSONL **before the ladder
+ * runs**, on the one open that is about to cross into schema 23.
+ *
+ * ## This is belt-and-braces, and nothing reads it
+ *
+ * Migration 23 adds three nullable columns and fills two of them; it cannot lose a
+ * skim. The backup exists because of what a skim *is* rather than because this
+ * step is risky: `request_skim` is derived from bodies **before** eviction removes
+ * them (`docs/adrs/0048-deletion-policy-split-by-tier.md`), so for any day whose
+ * bodies have aged out the database holds the only copy and no re-ingest can
+ * produce it again. That is the same fact
+ * `docs/adrs/0047-sqlite-substrate-with-forward-only-migrations.md` rests on.
+ *
+ * **There is deliberately no reader for this file, anywhere in the repository.**
+ * It is never a seed, never consulted on the happy path, and nothing in normal
+ * operation depends on it — writing a restore path would make it load-bearing and
+ * would be the rebuild path this ticket is forbidden to build. It is an artefact
+ * for a human holding a broken database, and that is all.
+ *
+ * ## When it runs, and when it does not
+ *
+ * Only when this file is below 23 and actually has something to lose. A fresh
+ * database (no `request` table) and one predating `body_derived` write no file at
+ * all, which is why the ordinary test that opens an empty directory leaves no
+ * backups behind. `openDbReadOnly` never reaches here: it applies no migration, so
+ * it has nothing to take a pre-migration copy of.
+ *
+ * The skim is read from whichever shape this file is in — `request_skim` once
+ * slice 20 has run, `request.skim_text` before it — so the copy holds the same
+ * derivatives either way.
+ *
+ * ## A failure here stops the open
+ *
+ * It is allowed to throw. A backup that was asked for, silently skipped, and
+ * believed in is worse than a loud failure to start, and the caller can retry once
+ * the directory is writable.
+ */
+function backUpBeforeMigration23(db: DatabaseSync, logDir: string): void {
+  // SAFETY: `PRAGMA user_version` answers a single row whose single column SQLite
+  // names `user_version`, which is what this row type declares — the same read
+  // `migrate` makes below.
+  const versionRow = db.prepare('PRAGMA user_version').get() as { user_version?: number } | undefined;
+  if (Number(versionRow?.user_version ?? 0) >= 23) return;
+  if (!hasTable(db, 'request') || !hasColumn(db, 'request', 'body_derived')) return;
+
+  const skimSource = hasTable(db, 'request_skim')
+    ? 'LEFT JOIN request_skim s ON s.request_id = r.id'
+    : hasColumn(db, 'request', 'skim_text')
+      ? ''
+      : null;
+  const skimColumn = skimSource === null ? 'NULL AS skim_text' : skimSource === '' ? 'r.skim_text' : 's.skim_text';
+
+  const rows = db
+    .prepare(`SELECT r.id AS id, r.body_derived AS body_derived, ${skimColumn} FROM request r ${skimSource ?? ''}`)
+    .all();
+  if (rows.length === 0) return;
+
+  const lines = rows.map((row) => JSON.stringify(row));
+  const dir = path.join(logDir, BACKUP_DIR);
+  // A colon is legal on this filesystem and awkward everywhere else, so the
+  // timestamp is flattened rather than written as a bare ISO string.
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const file = path.join(dir, `pre-migration-23-${stamp}.jsonl`);
+  fs.mkdirSync(dir, { recursive: true });
+  // Written aside and renamed, so a crash mid-write cannot leave a half file
+  // wearing the name of a complete one.
+  const partial = `${file}.partial`;
+  fs.writeFileSync(partial, `${lines.join('\n')}\n`, 'utf8');
+  fs.renameSync(partial, file);
+}
+
+/** Whether `name` is a table in this database. */
+function hasTable(db: DatabaseSync, name: string): boolean {
+  return db.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?`).get(name) !== undefined;
+}
+
+/**
+ * Whether `table` carries `column`.
+ *
+ * Asked through the table-valued `pragma_table_info`, which — unlike the bare
+ * `PRAGMA` statement — takes bind parameters and answers a row set the `WHERE`
+ * can filter, so neither the table name nor the column name is interpolated and
+ * nothing has to reach into an untyped row to read a field back.
+ */
+function hasColumn(db: DatabaseSync, table: string, column: string): boolean {
+  return db.prepare('SELECT 1 FROM pragma_table_info(?) WHERE name = ?').get(table, column) !== undefined;
 }
 
 /**
@@ -991,6 +1149,7 @@ function migrate(db: DatabaseSync): void {
   if (from < 20) db.exec(SCHEMA_V20);
   if (from < 21) db.exec(SCHEMA_V21);
   if (from < 22) db.exec(SCHEMA_V22);
+  if (from < 23) db.exec(SCHEMA_V23);
 
   // `PRAGMA user_version` takes no bind parameters, hence the interpolation.
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
