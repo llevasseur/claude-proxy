@@ -47,6 +47,8 @@ import type {
   ProxyFilterEntry,
   PrSessionLink,
   PullRequestRow,
+  RateRow,
+  RateTableSnapshot,
   RequestBreakdown,
   RequestMessageDetail,
   RequestToolDetail,
@@ -1026,6 +1028,17 @@ export interface ApiGetResponses extends Record<ApiJsonGetPath, unknown> {
   '/api/cli-internals/function': CliFunctionResponse;
   '/api/system-prompt': SystemPromptResponse;
   '/api/filters': FiltersResponse;
+  '/api/pricing': RateTableSnapshot;
+}
+
+/**
+ * What a rate delete answers: the table without the row, and whether there was one.
+ *
+ * `removed: false` is an outcome rather than a failure — two operators clearing the
+ * same stale row should both end up seeing it gone.
+ */
+export interface RateRowDeletedResponse extends RateTableSnapshot {
+  removed: boolean;
 }
 
 /**
@@ -1048,6 +1061,8 @@ interface ApiPostResponses extends Record<ApiWritePath, unknown> {
   '/api/chat/sessions/message': ChatSendResponse;
   '/api/chat/stop': ChatStopResponse;
   '/api/chat/sessions/end': ChatStopResponse;
+  '/api/pricing/model': RateTableSnapshot;
+  '/api/pricing/model/delete': RateRowDeletedResponse;
 }
 
 /** Unwrap a response, preferring the server's `{ error }` message over the status. */
@@ -1242,6 +1257,23 @@ export const fileIdeas = (filings: IdeaFiling[]) => write('/api/ideas/area', { f
 /** Write the comment on an idea. It replaces the previous one; `''` clears it. */
 export const commentIdeas = (comments: IdeaComment[]) => write('/api/ideas/comment', { comments });
 export const getFilters = () => read('/api/filters');
+/**
+ * The rate table an operator edits: every model's row, and the fallback rows without
+ * one fall through to.
+ *
+ * No `days`, no as-of date, and no history — there is one current rate per model and
+ * it prices the whole corpus (ADR 0044).
+ */
+export const getRateTable = () => read('/api/pricing');
+/**
+ * Add or correct one model's four rates, answering with the table that results.
+ *
+ * The whole table rather than an acknowledgement, because the stored key is the
+ * normalized one and the caller has to show what was actually filed under.
+ */
+export const saveModelRate = (model: string, rates: RateRow) => write('/api/pricing/model', { model, rates });
+/** Remove one model's row. Its records then price at the fallback, or unpriced if none. */
+export const deleteModelRate = (model: string) => write('/api/pricing/model/delete', { model });
 export const getChatConfig = () => read('/api/chat/config');
 /** Turns in flight — how a session page finds the Stop the starting tab may have lost. */
 export const getRunningChats = () => read('/api/chat/running');

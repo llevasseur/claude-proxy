@@ -1,0 +1,334 @@
+@layer components {
+  /* Pricing — the rate table an operator edits by hand.
+   *
+   * Two things every rule here serves, and both are about not lying to the person
+   * typing. A `null` rate is a word and a number is a number: "not set" is
+   * UI-face prose in `--faint`, `0.00` is mono in `--text`, so a bucket with no
+   * rate is never mistaken for a free one. And a save that failed never resembles
+   * one that landed: a coral triangle that stays put, against a green check that
+   * fades out on its own.
+   *
+   * Read after `table.css` in `styles.css`, because `.pricing-table td` matches at
+   * the same specificity as `.table td` and has to win. */
+
+  /* The consequence, standing.
+   *
+   * Not dismissible, and not a toast. Cost is resolved from this table on every
+   * read and stored nowhere (ADR 0065), so this sentence is true on every visit
+   * rather than a warning to click past once. */
+  .pricing-ledger-note {
+    border-left: 3px solid var(--amber);
+    font-size: var(--text-5);
+    line-height: 1.5;
+  }
+  .pricing-ledger-note strong {
+    color: var(--amber);
+  }
+  /* What the last edit actually moved, named. Appended for a few seconds after a
+   * save, so the page reports the consequence rather than only warning about it. */
+  .pricing-ledger-note-last {
+    display: block;
+    margin-top: var(--space-5);
+    color: var(--muted);
+    font-size: var(--text-4);
+    font-variant-numeric: tabular-nums;
+    opacity: 1;
+    transform: translateY(0);
+    transition:
+      opacity var(--motion-duration) var(--ease-out),
+      transform var(--motion-duration) var(--ease-out);
+  }
+  @starting-style {
+    .pricing-ledger-note-last {
+      opacity: 0;
+      transform: translateY(2px);
+    }
+  }
+  .pricing-ledger-note-last code {
+    font-family: var(--font-mono);
+    color: var(--text);
+  }
+
+  /* A card's one-sentence address, under its heading and above its content. */
+  .pricing-blurb {
+    font-size: var(--text-4);
+    line-height: 1.5;
+    max-width: 64ch;
+    margin-bottom: var(--space-8);
+  }
+  .pricing-absent {
+    color: var(--muted);
+    font-size: var(--text-5);
+  }
+
+  /* table ------------------------------------------------------------------ */
+
+  .pricing-table td {
+    /* Inputs are taller than text, so hold the row height in both modes: a row
+     * entering edit must not shove the rows under it down the page. */
+    height: calc(var(--space-12) + var(--space-5));
+    vertical-align: middle;
+    transition: background var(--motion-duration) ease;
+  }
+  .pricing-model {
+    font-family: var(--font-mono);
+    font-size: var(--text-5);
+    color: var(--text);
+  }
+  /* A row with any rate not set carries a marker on its name, so the first column
+   * can be scanned for holes without reading four cells in each row. */
+  .pricing-table tr.is-partial .pricing-model::before {
+    content: "";
+    display: inline-block;
+    width: var(--space-5);
+    height: var(--space-5);
+    margin-right: var(--space-5);
+    border-radius: var(--radius-pill);
+    background: var(--amber);
+    vertical-align: middle;
+  }
+  .pricing-rate {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+  /* The word, not a number: UI face, faint, dotted so it reads as a gap in the
+   * column rather than as a very small number. */
+  .pricing-rate-unset {
+    font-family: var(--font-ui);
+    font-size: var(--text-4);
+    color: var(--faint);
+    text-decoration: underline dotted;
+    text-underline-offset: 0.2em;
+  }
+  .pricing-table tr.is-editing td {
+    background: var(--surface-2);
+  }
+  .pricing-actions {
+    text-align: right;
+    white-space: nowrap;
+  }
+  .pricing-actions > * + * {
+    margin-left: var(--space-5);
+  }
+  /* Enter: the row lands where it will live, carrying the same green the status
+   * makes, drained into the table. Exit: fade, then one reflow — a height collapse
+   * would reflow every sibling for no information. */
+  .pricing-table tr.is-entering td {
+    animation: pricing-row-enter var(--motion-duration-slow) var(--ease-out) backwards;
+  }
+  @keyframes pricing-row-enter {
+    from {
+      opacity: 0;
+      background: color-mix(in srgb, var(--good) 16%, transparent);
+    }
+  }
+  .pricing-table tr.is-leaving td {
+    opacity: 0;
+    transition: opacity var(--motion-duration) var(--ease-out);
+  }
+
+  /* form ------------------------------------------------------------------- */
+
+  .pricing-row-form {
+    display: flex;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: var(--space-7) var(--space-8);
+  }
+  .pricing-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    flex: 1 1 9rem;
+    min-width: 8rem;
+  }
+  .pricing-field-label {
+    color: var(--muted);
+    font-size: var(--text-3);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-label);
+  }
+  /* The box the operator sees is unit, field, unit. The input inside is borderless
+   * and the wrapper takes the focus ring, the same mechanism the select field uses. */
+  .pricing-field-input {
+    display: inline-flex;
+    align-items: center;
+    background: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-3);
+  }
+  .pricing-field-input:hover {
+    border-color: var(--signal-dim);
+  }
+  .pricing-field-input:focus-within {
+    border-color: var(--signal);
+    outline: 2px solid var(--signal);
+    outline-offset: 2px;
+  }
+  .pricing-field-input input {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: 100%;
+    background: none;
+    border: none;
+    padding: var(--space-4) var(--space-3);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: var(--text-5);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+  .pricing-field-input input:focus-visible {
+    outline: none;
+  }
+  .pricing-field-input input::placeholder {
+    /* The placeholder is the words "not set", so it takes the UI face like the cell. */
+    font-family: var(--font-ui);
+    text-align: right;
+  }
+  .pricing-field-input input:read-only {
+    color: var(--muted);
+  }
+  .pricing-field-unit {
+    color: var(--faint);
+    font-size: var(--text-3);
+    padding: 0 var(--space-4);
+    user-select: none;
+  }
+  /* Invalid snaps rather than transitions — an error must not lag the keystroke
+   * that caused it. */
+  .pricing-field-input:has(input[aria-invalid="true"]) {
+    border-color: var(--coral);
+  }
+  .pricing-field-input:has(input[aria-invalid="true"]):focus-within {
+    outline-color: var(--coral);
+  }
+  .pricing-field-error {
+    min-height: 1.4em;
+    color: var(--coral);
+    font-size: var(--text-4);
+    line-height: 1.4;
+  }
+  .pricing-field-error:empty {
+    display: none;
+  }
+  /* In a table row a field is too narrow to carry its own message, so the row's
+   * errors are collected into one full-width line beneath the fields. */
+  .pricing-table .pricing-field-error {
+    display: none;
+  }
+  .pricing-field-note,
+  .pricing-row-errors {
+    flex-basis: 100%;
+    font-size: var(--text-4);
+    line-height: 1.45;
+  }
+  .pricing-field-note {
+    color: var(--muted);
+  }
+  .pricing-row-errors {
+    color: var(--coral);
+  }
+  .pricing-model-input {
+    flex: 2 1 14rem;
+  }
+  .pricing-model-input input {
+    font-family: var(--font-mono);
+    text-align: left;
+  }
+  .pricing-edit-cell {
+    padding-top: var(--space-7);
+    padding-bottom: var(--space-7);
+  }
+
+  /* save state ------------------------------------------------------------- */
+
+  /* Always rendered, so the actions never change width when a state lands. */
+  .pricing-row-status {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-width: 12rem;
+    font-size: var(--text-4);
+    color: var(--muted);
+    white-space: nowrap;
+    opacity: 1;
+    transform: translateY(0);
+    transition:
+      opacity var(--motion-duration) var(--ease-out),
+      transform var(--motion-duration) var(--ease-out);
+  }
+  @starting-style {
+    .pricing-row-status {
+      opacity: 0;
+      transform: translateY(2px);
+    }
+  }
+  .is-saved .pricing-row-status {
+    color: var(--good);
+  }
+  /* Coral, bold, and it stays: nothing times this one out, because a failed save
+   * that quietly cleared itself would end up looking like one that worked. */
+  .is-failed .pricing-row-status {
+    color: var(--coral);
+    font-weight: 600;
+  }
+  .pricing-spinner {
+    width: 0.85em;
+    height: 0.85em;
+    box-sizing: border-box;
+    border: 2px solid color-mix(in srgb, currentColor 28%, transparent);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: pricing-spin var(--motion-loop-fast) linear infinite;
+  }
+  @keyframes pricing-spin {
+    to {
+      transform: rotate(1turn);
+    }
+  }
+
+  /* danger ----------------------------------------------------------------- */
+
+  .pricing-danger {
+    color: var(--muted);
+  }
+  .pricing-danger:hover:not(:disabled) {
+    color: var(--coral);
+    border-color: var(--coral);
+  }
+  /* A `fieldset` rather than a labelled `span`: the confirm is a group of controls,
+   * and the semantic element is what carries that without an ARIA role. Its default
+   * chrome is reset here, since the group is inline copy plus two buttons. */
+  .pricing-confirm {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-5);
+    border: none;
+    margin: 0;
+    padding: 0;
+    min-inline-size: 0;
+    font-size: var(--text-4);
+    color: var(--text);
+    white-space: normal;
+  }
+  /* Still the primary shape, because it is the action the group exists for — but
+   * never the signal colour. */
+  .pricing-confirm-yes {
+    color: var(--coral);
+    border-color: var(--coral);
+  }
+  .pricing-confirm-yes:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--coral) 12%, transparent);
+    border-color: var(--coral);
+  }
+
+  /* A narrow card: the four fields wrap two-up on their own, and the status slot
+   * gives up its reserved width so the actions can shrink with them. */
+  @container card (max-width: 560px) {
+    .pricing-row-status {
+      min-width: 0;
+    }
+  }
+}

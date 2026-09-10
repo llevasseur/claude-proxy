@@ -36,6 +36,9 @@
 @import "./styles/components/chart.css";
 @import "./styles/components/trend-carousel.css";
 @import "./styles/components/table.css";
+/* After `table.css`: the pricing sheet restyles `.pricing-table` cells at the same
+ * specificity as `.table td`, so it has to be read later to win. */
+@import "./styles/components/pricing.css";
 @import "./styles/components/advice.css";
 @import "./styles/components/ideas.css";
 @import "./styles/components/suggestion.css";
