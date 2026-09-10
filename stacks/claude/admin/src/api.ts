@@ -42,6 +42,7 @@ import type {
   MixAttribution,
   PatternFrequency,
   PluginRow,
+  PricingSummary,
   PromptMixDay,
   PromptRevision,
   ProxyFilterEntry,
@@ -70,6 +71,7 @@ import type {
   SuggestionStatusUpdate,
   SystemPromptDoc,
   TopTool,
+  UnavailableNotice,
   UsageDigest,
   UsageLimitsSnapshot,
   WithheldReport,
@@ -284,6 +286,31 @@ export interface ContextToolPresent {
   tool: RequestToolDetail;
 }
 export type ContextToolResponse = ContextToolPresent | EvictedBodyResponse;
+/**
+ * What share of the corpus can be priced, and why the rest cannot.
+ *
+ * Two scopes, because they answer different questions. `corpus` is the
+ * discoverability figure the coverage card shows. `day` is what an aggregate
+ * needs: ADR 0044 makes a total containing an unpriced record unavailable, so a
+ * surface showing one day's cost asks about that day — a corpus-wide count would
+ * condemn every day for one bad record in the archive. `day` is null when no
+ * date was asked for.
+ */
+export interface PricingCoverageScope {
+  summary: PricingSummary;
+  reasons: PricingCoverageReason[];
+}
+export interface PricingCoverageReason {
+  code: string;
+  label: string;
+  detail: string;
+  severity: UnavailableNotice['severity'];
+  records: number;
+}
+export interface PricingCoverageResponse {
+  corpus: PricingCoverageScope;
+  day: (PricingCoverageScope & { date: string }) | null;
+}
 export interface SkimResponse {
   date: string;
   skim: SkimDigest;
@@ -1061,6 +1088,7 @@ export interface ApiGetResponses extends Record<ApiJsonGetPath, unknown> {
   '/api/chat/config': ChatConfigResponse;
   '/api/chat/running': RunningChatsResponse;
   '/api/chat/thread': ChatThreadResponse;
+  '/api/pricing/coverage': PricingCoverageResponse;
   '/api/skim': SkimResponse;
   '/api/skim/trend': SkimTrendResponse;
   '/api/withheld': WithheldResponse;
@@ -1240,6 +1268,11 @@ export const getSuggestionStatus = (
 /** Record flags. Setting one back to `pending` deletes its entry — that is the undo. */
 export const markSuggestionStatus = (updates: SuggestionStatusUpdate[]) =>
   write('/api/sessions/suggestions/status', { updates });
+/**
+ * Pricing coverage. Pass the day the page is showing to get that day's tally
+ * beside the corpus one; omit it when only the corpus figure is wanted.
+ */
+export const getPricingCoverage = (date?: string) => read('/api/pricing/coverage', { date });
 export const getSkim = (date?: string) => read('/api/skim', { date });
 export const getSkimTrend = (days: number) => read('/api/skim/trend', { days });
 export const getWithheld = (days = 14) => read('/api/withheld', { days });

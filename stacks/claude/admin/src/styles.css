@@ -40,6 +40,11 @@
 @import "./styles/components/ideas.css";
 @import "./styles/components/suggestion.css";
 @import "./styles/components/badge.css";
+/* After `table.css`, which is where `.hint-bubble` is declared: the unavailable
+ note rides those declarations and the two selectors have equal specificity, so
+ the order is what decides. It follows `badge.css` because it is that pill,
+ hollowed out. */
+@import "./styles/components/unavailable.css";
 @import "./styles/components/rawjson.css";
 @import "./styles/components/session-list.css";
 @import "./styles/components/markdown.css";
