@@ -2,7 +2,7 @@
 
 **Wayfinder:** `provider-seam`
 **Branch:** `task/provider-seam-16-ui-fallback-stamp`
-**Status:** active
+**Status:** done · 2026-09-10
 
 Depends on ticket 06. **Mandatory three-phase protocol — read it first.**
 
