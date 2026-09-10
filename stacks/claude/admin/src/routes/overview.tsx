@@ -1,4 +1,4 @@
-import type { UsageDigest } from '@agent-proxy/claude-core';
+import { costUnavailableNotice, type UsageDigest } from '@agent-proxy/claude-core';
 import { useQuery } from '@tanstack/react-query';
 import { createRoute, Link } from '@tanstack/react-router';
 import { Monitor } from 'lucide-react';
@@ -16,6 +16,7 @@ import {
 import { InternetSpendCard } from '../components/InternetSpendCard';
 import { type ModelOption, shortModelName } from '../components/ModelPicker';
 import { PerRequestCard, PerRequestSkeleton } from '../components/PerRequestCard';
+import { PricingCoverageCard, usePricingCoverage } from '../components/PricingCoverageCard';
 import { QueryState } from '../components/QueryState';
 import { Skeleton, SkeletonStats, SkeletonText } from '../components/Skeleton';
 import { StatCard } from '../components/StatCard';
@@ -27,6 +28,15 @@ import { type LiveStatus, useLiveQuery } from '../useLiveQuery';
 import { useTransitionState } from '../useTransitionState';
 import type { NavEntry } from './nav';
 import { EVERY_PROVIDER } from './providers';
+
+/**
+ * The tiles whose headline is money.
+ *
+ * A rate and a per-call figure are the same unavailable sum divided by a known
+ * number, so ADR 0044's propagation reaches all three — leaving one of them
+ * showing a dollar amount would be the quiet partial total the decision refuses.
+ */
+const MONEY_METRIC_KEYS: ReadonlySet<string> = new Set(['cost', 'cost-rate', 'cost-per-call']);
 
 export function OverviewPage() {
   const [days, selectDays, isSwitching] = useTransitionState(7);
@@ -200,6 +210,23 @@ function OverviewBody({
   const d = model ? digests.find((x) => x.date === date) : data.digest;
   const trend = new Map((d?.trend ?? []).map((t) => [t.field, t]));
 
+  // ADR 0044: a total containing an unpriced record is itself unavailable, so the
+  // money tiles for a day holding one must not show a figure. The count is the
+  // *day's* rather than the corpus's — one unpriced record in the archive says
+  // nothing about today, and condemning every day for it would be its own lie.
+  const coverage = usePricingCoverage(date);
+  const dayUnpriced = coverage.data?.day?.summary.unpriced ?? 0;
+  // Muted rather than amber: the fault and its fix are reported once, on the
+  // coverage card below. A tile repeating it in the same colour would report one
+  // problem twice, which is what trains a reader to stop looking.
+  const costUnavailable =
+    dayUnpriced > 0
+      ? costUnavailableNotice({
+          code: 'aggregate-incomplete',
+          detail: `${fmtInt(dayUnpriced)} of ${fmtInt(d?.requestCount ?? 0)} requests on ${date} have no rate, so this total would understate spend`,
+        })
+      : undefined;
+
   if (!model && data.digest.requestCount === 0) {
     return <div className='card empty'>No Claude activity captured for {date}.</div>;
   }
@@ -210,16 +237,20 @@ function OverviewBody({
         <div className='grid stats'>
           {METRICS.map((m) => {
             const t = m.trendField ? trend.get(m.trendField) : undefined;
+            // Every money tile, not only the total: a rate and a per-call figure
+            // are the same unavailable sum divided by something known.
+            const unavailable = MONEY_METRIC_KEYS.has(m.key) ? costUnavailable : undefined;
             return (
               <StatCard
                 key={m.key}
                 label={m.label}
                 value={m.headline ? m.headline(d) : m.format(m.value(d))}
-                sub={m.sub?.(d)}
+                sub={unavailable ? `${fmtInt(dayUnpriced)} of ${fmtInt(d.requestCount)} requests unpriced` : m.sub?.(d)}
                 deltaPct={t?.deltaPct}
                 baseline={t?.priorDate ? { date: t.priorDate, value: m.format(t.prior) } : undefined}
                 increaseIsBad={m.increaseIsBad}
                 metric={m.key}
+                unavailable={unavailable}
                 spark={{
                   points: digests.map((x) => ({ date: x.date, value: m.value(x) })),
                   color: m.color,
@@ -235,6 +266,10 @@ function OverviewBody({
           No {model && shortModelName(model)} requests captured for {date}.
         </div>
       )}
+
+      {/* Before the money plots, so the caveat is met before the numbers it
+          qualifies rather than after them. */}
+      <PricingCoverageCard date={date} />
 
       {/* Both plots follow the page head until their own picker is touched, and each
           fetches the days it is actually drawing. */}

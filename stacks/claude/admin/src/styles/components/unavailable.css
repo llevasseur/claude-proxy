@@ -1,0 +1,142 @@
+@layer components {
+  /* A value the dashboard refuses to guess at (ADR 0020, ADR 0044).
+   *
+   * One idea carries the whole treatment: a value we know is a filled shape, and
+   * a value we do not know is the same shape hollowed out with a dashed edge.
+   * The badges beside it are filled pills with a 16% tint; this is that pill at
+   * 8%, dashed. It reads as "there is a slot here and nothing is in it" at
+   * `--text-3` in a table cell and at `--text-6` in a headline, and it is the one
+   * dashed border in the sheet.
+   *
+   * Severity picks the hue and kind never does, so an unpriced cost and an
+   * unreadable store speak with one voice. `attention` is amber — the token
+   * comment already gives amber to "cost / cache / caution", and `.usage-partial`
+   * already uses it for an estimate the logs cannot back. Coral stays reserved
+   * for regressions: an unpriced model is a to-do, not a regression.
+   * `informational` is `--muted`. */
+  .unavailable {
+    --tone: var(--amber);
+    position: relative;
+    display: inline-flex;
+    vertical-align: middle;
+    max-width: 100%;
+  }
+  .unavailable.sev-informational {
+    --tone: var(--muted);
+  }
+  /* The whole pill is the trigger rather than a separate mark beside it: one tab
+   stop, a hit target the size of the word, and no second glyph competing with the
+   label inside a stat headline. */
+  .unavailable-pill {
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: var(--space-1) var(--space-5);
+    border: 1px dashed color-mix(in srgb, var(--tone) 60%, transparent);
+    border-radius: var(--radius-pill);
+    background: color-mix(in srgb, var(--tone) 8%, transparent);
+    color: var(--tone);
+    /* Interface text, not data: it stands where a figure would and says it is not one. */
+    font-family: var(--font-ui);
+    font-size: var(--text-3);
+    font-weight: 500;
+    line-height: 1.4;
+    letter-spacing: 0.01em;
+    text-transform: none;
+    cursor: help;
+    transition: border-color var(--motion-duration) ease;
+  }
+  /* The dashes close: the only thing that moves is the edge resolving under the
+   cursor, which is what invites the note out. */
+  .unavailable-pill:hover,
+  .unavailable-pill:focus-visible {
+    border-color: var(--tone);
+  }
+  /* base.css rounds a focused button to --radius-3, which would square the capsule. */
+  .unavailable-pill:focus-visible {
+    border-radius: var(--radius-pill);
+    outline: 2px solid var(--signal);
+    outline-offset: 2px;
+  }
+  /* In a stat headline. The wrapper keeps `.stat-value`'s own font size, so the
+   line box — and the card's height — do not change between a priced day and an
+   unpriced one. */
+  .unavailable.size-lg .unavailable-pill {
+    padding: var(--space-3) var(--space-8);
+    font-size: var(--text-6);
+    line-height: 1.3;
+  }
+  /* Inherits position, surface, radius, shadow, type and the reveal transition
+   from `.hint-bubble` in table.css; only the trigger differs, which is why this
+   file is imported after that one. */
+  .unavailable-bubble {
+    top: calc(100% + 6px);
+  }
+  .unavailable-pill:hover + .unavailable-bubble,
+  .unavailable-pill:focus-visible + .unavailable-bubble {
+    display: block;
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+  @starting-style {
+    .unavailable-pill:hover + .unavailable-bubble,
+    .unavailable-pill:focus-visible + .unavailable-bubble {
+      opacity: 0;
+      transform: translate(-50%, -4px) scale(0.97);
+    }
+    .unavailable.align-end .unavailable-pill:hover + .unavailable-bubble,
+    .unavailable.align-end .unavailable-pill:focus-visible + .unavailable-bubble {
+      transform: translate(0, -4px) scale(0.97);
+    }
+  }
+  /* A right-aligned cell opens its note inward, clear of the card's edge. */
+  .unavailable.align-end .unavailable-bubble {
+    left: auto;
+    right: 0;
+    transform: translate(0, -4px) scale(0.97);
+    transform-origin: top right;
+  }
+  .unavailable.align-end .unavailable-pill:hover + .unavailable-bubble,
+  .unavailable.align-end .unavailable-pill:focus-visible + .unavailable-bubble {
+    transform: translate(0, 0) scale(1);
+  }
+
+  /* Pricing coverage: the usage-meter chrome, with the bar split into named
+   * segments. A table rate is the meter's own real-input teal; a fallback rate is
+   * an estimate we stand behind, in solid amber; unpriced is that same amber with
+   * the fill taken out, so the bar and the pill above say "hollow" the same way. */
+  .coverage-bar {
+    display: flex;
+  }
+  .coverage-seg {
+    flex: 0 0 auto;
+    height: 100%;
+    transition: width var(--motion-duration-slow) ease;
+  }
+  .coverage-seg.is-table {
+    background: var(--signal);
+  }
+  .coverage-seg.is-fallback {
+    background: var(--amber);
+  }
+  .coverage-seg.is-unpriced {
+    background: repeating-linear-gradient(135deg, var(--amber) 0 2px, transparent 2px 5px);
+  }
+  .coverage-readout {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-5);
+    /* Longhand rather than a shorthand: the shorthand habit is what silently
+     reset a sibling's top gap once, which is why check:css exists. */
+    margin-top: var(--space-6);
+    margin-bottom: var(--space-4);
+  }
+  .coverage-reasons {
+    margin-top: var(--space-8);
+  }
+  .coverage-reasons li:last-child {
+    border-bottom: 0;
+  }
+}

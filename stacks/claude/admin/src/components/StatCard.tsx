@@ -1,3 +1,4 @@
+import type { UnavailableNotice } from '@agent-proxy/claude-core';
 import { Link } from '@tanstack/react-router';
 import {
   type CSSProperties,
@@ -11,6 +12,7 @@ import {
 } from 'react';
 import { deltaLabel, deltaTone } from '../format';
 import { Sparkline, type SparkPoint } from './Sparkline';
+import { Unavailable } from './Unavailable';
 
 /** Gap between card and popover; mirrors the offset in `.stat-popover`. */
 const POPOVER_GAP = 8;
@@ -86,6 +88,18 @@ export interface StatCardProps {
   metric?: string;
   /** Per-day history: renders a sparkline and a hover popover of values. */
   spark?: StatSpark;
+  /**
+   * The tile has no value to show, and why.
+   *
+   * `value` is a pre-formatted string, so there is no way to say "unknown" in it
+   * that a reader could tell apart from a real figure — which is exactly the
+   * confusion [ADR 0020](../../../../../docs/adrs/0020-unavailable-incomplete-cost.md)
+   * refuses. When this is set the headline renders the shared unavailable mark
+   * instead of `value`, and the delta is suppressed because there is nothing to
+   * compare. `sub` and the baseline line still render, so the tile can say what
+   * *was* measured.
+   */
+  unavailable?: UnavailableNotice;
 }
 
 export function StatCard({
@@ -97,6 +111,7 @@ export function StatCard({
   increaseIsBad = true,
   metric,
   spark,
+  unavailable,
 }: StatCardProps) {
   const tone = deltaPct === undefined ? null : deltaTone(deltaPct);
   const good = tone === 'flat' ? 'flat' : (tone === 'up') === increaseIsBad ? 'bad' : 'good';
@@ -104,7 +119,9 @@ export function StatCard({
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const [above, setAbove] = useState(false);
-  const valueRef = useFitText(value);
+  // The mark sizes itself; fitting has nothing to measure, so it is handed an
+  // empty string rather than a figure the tile is not showing.
+  const valueRef = useFitText(unavailable ? '' : value);
 
   // Placement is settled as the cursor arrives: below, or over the card when the
   // viewport would clip it.
@@ -122,11 +139,13 @@ export function StatCard({
     <>
       <div className='stat-label'>{label}</div>
       <div className='stat-value' ref={valueRef}>
-        {value}
+        {unavailable ? <Unavailable notice={unavailable} size='lg' /> : value}
       </div>
       <div className='stat-foot'>
         {sub && <span className='muted'>{sub}</span>}
-        {deltaPct !== undefined && tone !== 'flat' && <span className={`delta ${good}`}>{deltaLabel(deltaPct)}</span>}
+        {!unavailable && deltaPct !== undefined && tone !== 'flat' && (
+          <span className={`delta ${good}`}>{deltaLabel(deltaPct)}</span>
+        )}
       </div>
       {tone !== null && <div className='stat-baseline'>{baselineText(tone, baseline, deltaPct)}</div>}
       {spark && spark.points.length > 0 && (
