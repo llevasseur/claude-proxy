@@ -110,6 +110,17 @@
     color: var(--text);
   }
 
+  /* The empty-category row, muted from inside this sheet rather than by `.muted`.
+     `.muted` is declared in `@layer layout` and `styles.css` declares `components`
+     after it, so the rule above beats it whatever the specificity — and the row meant
+     to read as "this category exists and is at zero" would come out at full weight,
+     looking like a real figure. Keep this declared AFTER `.rate-legend-label`: they
+     are equal specificity in one layer, so source order is what decides, and
+     reordering the file brings the bug back silently. */
+  .rate-legend-empty {
+    color: var(--muted);
+  }
+
   /* In the legend the stamp hangs off nothing, so it drops the cell gap it carries
      inside a table. */
   .rate-legend-label .rate-stamp {

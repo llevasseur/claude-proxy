@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { getPricingMix, type PricingMixModel, type PricingMixReport } from '../api';
 import { fmtPct, fmtUsd } from '../format';
-import { Skeleton } from './Skeleton';
+import { Skeleton, SkeletonText } from './Skeleton';
 
 /**
  * Where this corpus's spend got its rates, and the stamp that says so per model.
@@ -35,11 +35,13 @@ const SCOPE_NOTE = 'Priced spend across the whole corpus, by where the rate came
  * about another.
  */
 export function RateStamp({ proxy, model }: { proxy: string; model?: string }) {
-  const subject = model === undefined ? 'This model' : `No published row for ${model}`;
+  // No leading sentence when no model is named: in the legend the stamp speaks for a
+  // whole category, and "This model." there would be about nothing in particular.
+  const subject = model === undefined ? '' : `No published row for ${model}. `;
   return (
     <span
       className='rate-stamp'
-      title={`${subject}. Priced at the blanket rate the ${proxy} proxy declares — an estimate, not a fault. Add a row on the Pricing page to replace it.`}>
+      title={`${subject}Priced at the blanket rate the ${proxy} proxy declares. An estimate, not a fault. Add a row on the Pricing page to replace it.`}>
       <span className='sr-only'>estimated at the </span>
       {proxy} rate
     </span>
@@ -175,7 +177,7 @@ function Loaded({ report }: { report: PricingMixReport }) {
           // exists and is at zero instead of wondering where it went.
           <li>
             <span className='rate-swatch rate-seg-fallback' aria-hidden='true' />
-            <span className='rate-legend-label muted'>No blanket rates used</span>
+            <span className='rate-legend-label rate-legend-empty'>No blanket rates used</span>
             <span className='rate-legend-value'>{fmtUsd(0)}</span>
             <span className='rate-legend-share'>{fmtPct(0)}</span>
           </li>
@@ -206,6 +208,9 @@ function Loaded({ report }: { report: PricingMixReport }) {
           </tr>
         </thead>
         <tbody>
+          {/* Rendered in the order the server sent: costliest first, unpriced last.
+              That ordering is one decision in `summarizePricingMix`, and re-sorting
+              here would be a second one free to drift from it. */}
           {report.models.map((row) => (
             <tr key={row.model}>
               <td className='rate-model'>{row.model}</td>
@@ -226,16 +231,14 @@ function Loaded({ report }: { report: PricingMixReport }) {
 function RateCoverageSkeleton() {
   return (
     <div className='card rate-coverage' aria-busy='true'>
-      <div className='card-head'>
-        <Skeleton w='11rem' />
-      </div>
+      {/* No `.card-head` wrapper: its bottom margin would stack with the heading
+          placeholder's own. */}
+      <Skeleton w='34%' className='skeleton-h2' />
       {/* Empty: the bar's own border draws the slot it will fill. */}
       <div className='stackbar rate-coverage-bar' aria-hidden />
-      <div aria-hidden>
-        <Skeleton w='84%' />
-        <Skeleton w='72%' />
-        <Skeleton w='63%' />
-      </div>
+      {/* `SkeletonText` rather than loose bars — it supplies the grid and the gap
+          between the lines, which a bare wrapper does not. */}
+      <SkeletonText lines={3} />
     </div>
   );
 }
