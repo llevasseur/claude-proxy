@@ -290,3 +290,183 @@ export function pricingSummaryFrom(counts: {
     fallbackShare: priced === 0 ? null : fromFallback / priced,
   };
 }
+
+/**
+ * ## Editing the table
+ *
+ * Everything below serves the operator's surface over these rows — the four
+ * declarations an editor needs and the one rule that says whether what they typed
+ * is a rate. It is deliberately in core rather than in the page or the handler,
+ * because **both** of them ask the same question and a form that accepts what the
+ * server rejects is worse than no validation at all: the operator is told their
+ * correction landed, and the corpus reprices to something else.
+ *
+ * Still no effective dating. Nothing here takes a date, returns one, or orders two
+ * rows in time — a rate is edited in place and the previous value is gone, which
+ * is what ADR 0044 means by one current rate per model.
+ */
+
+/** The four buckets a rate row prices, in the order an editor shows them. */
+export const RATE_FIELDS = ['input', 'output', 'cacheWrite', 'cacheRead'] as const;
+
+export type RateField = (typeof RATE_FIELDS)[number];
+
+/** What each bucket is called in prose. The wire keys stay camelCase. */
+export const RATE_FIELD_LABELS = {
+  input: 'Input',
+  output: 'Output',
+  cacheWrite: 'Cache write',
+  cacheRead: 'Cache read',
+} as const satisfies Record<RateField, string>;
+
+/**
+ * Why a value is not a rate, as a value rather than a sentence.
+ *
+ * Typed for the same reason {@link CostUnavailableReason} is: the page renders one
+ * of these beside the field the operator is typing in, and it should be able to
+ * act on the kind without parsing the message.
+ */
+export type RateProblem =
+  | { readonly kind: 'not-a-number'; readonly text: string }
+  | { readonly kind: 'negative'; readonly value: number }
+  | { readonly kind: 'too-precise'; readonly value: number };
+
+/** One field's parse: a usable rate, `null` for not configured, or what is wrong. */
+export type RateFieldParse =
+  | { readonly ok: true; readonly value: number | null }
+  | { readonly ok: false; readonly problem: RateProblem };
+
+/**
+ * Only decimal digits with at most one point, and an optional leading sign.
+ *
+ * Deliberately narrower than `Number()`, which accepts `0x1f`, `1e5` and
+ * `Infinity`. None of those is a rate anybody means to type, and each would be
+ * silently accepted and then stored — a rate table is an operator-edited dimension
+ * table, so the failure mode to avoid is a plausible-looking typo becoming a
+ * price. The sign is matched here rather than rejected, so a negative number
+ * reports {@link RateProblem} `negative` and names its value instead of being
+ * lumped in with `abc`.
+ */
+const RATE_TEXT = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/;
+
+/**
+ * How many decimals a rate may carry.
+ *
+ * Six, because that is what `pricing.ts`'s `RATE_PATTERN` already accepts when it
+ * reads a rate out of the catalogue, and a table an operator types into must not
+ * accept a value the rest of the pricing path would refuse. The number lives here
+ * as well as there because the two are read in different places, but it is one
+ * decision rather than two — change both together or neither.
+ */
+export const RATE_MAX_DECIMALS = 6;
+
+function decimalsOf(value: number): number {
+  const point = String(value).indexOf('.');
+  return point === -1 ? 0 : String(value).length - point - 1;
+}
+
+/**
+ * Whether an already-numeric rate is usable, or `null` when it is.
+ *
+ * The shared half of the rule: {@link parseRateField} calls it after turning text
+ * into a number, and a handler receiving JSON calls it directly, so the two cannot
+ * drift. `null` in means not configured, which is always allowed — that is the
+ * absence of a rate, not a bad one.
+ */
+export function checkRateValue(value: number | null): RateProblem | null {
+  if (value === null) return null;
+  if (!Number.isFinite(value)) return { kind: 'not-a-number', text: String(value) };
+  if (value < 0) return { kind: 'negative', value };
+  if (decimalsOf(value) > RATE_MAX_DECIMALS) return { kind: 'too-precise', value };
+  return null;
+}
+
+/**
+ * One field as the operator typed it.
+ *
+ * **Blank is `null`, not zero.** That is the whole of the distinction this table
+ * turns on: `0` is a real price for a bucket that genuinely costs nothing, and
+ * `null` is the absence of a defensible rate, which makes a *consumed* bucket's
+ * cost unavailable rather than free. An editor that coerced blank to zero would
+ * quietly bill an unpriced model at nothing.
+ */
+export function parseRateField(text: string): RateFieldParse {
+  const trimmed = text.trim();
+  if (trimmed === '') return { ok: true, value: null };
+  if (!RATE_TEXT.test(trimmed)) return { ok: false, problem: { kind: 'not-a-number', text: trimmed } };
+  const value = Number(trimmed);
+  const problem = checkRateValue(value);
+  return problem === null ? { ok: true, value } : { ok: false, problem };
+}
+
+/**
+ * The problem as a sentence naming what is wrong — never a generic failure.
+ *
+ * It says what was typed and what a rate is, because the message appears at the
+ * field while the operator is still in it: "invalid input" would make them guess
+ * which of the four they got wrong.
+ */
+export function rateProblemMessage(problem: RateProblem): string {
+  switch (problem.kind) {
+    case 'negative':
+      return "A rate can't be negative. Use 0 for a free bucket.";
+    case 'too-precise':
+      return `${RATE_MAX_DECIMALS} decimal places at most.`;
+    default:
+      return 'Enter a number, like 3 or 0.25.';
+  }
+}
+
+/** Why a model name is not usable as a key. */
+export type ModelNameProblem = { readonly kind: 'empty' } | { readonly kind: 'taken'; readonly model: string };
+
+export function modelNameProblemMessage(problem: ModelNameProblem): string {
+  return problem.kind === 'empty'
+    ? 'A rate row needs a model name — this is the exact name the proxy records, matched in full.'
+    : `The table already has a row for "${problem.model}". Edit that row instead of adding a second one.`;
+}
+
+/**
+ * Whether `model` can be added to a table already holding `existing`.
+ *
+ * The duplicate check runs on the **normalized** key, so `Claude-Opus-5 ` and
+ * `claude-opus-5` are caught as one row rather than added as two that then race to
+ * price the same model.
+ */
+export function checkModelName(model: string, existing: Iterable<string>): ModelNameProblem | null {
+  const key = normalizeModelKey(model);
+  if (key === '') return { kind: 'empty' };
+  for (const other of existing) {
+    if (normalizeModelKey(other) === key) return { kind: 'taken', model: other };
+  }
+  return null;
+}
+
+/** One stored rate row, as the wire carries it. */
+export interface StoredModelRate {
+  readonly model: string;
+  readonly rates: RateRow;
+  readonly updatedAt: string;
+}
+
+/** The proxy's declared fallback, as the wire carries it. */
+export interface StoredFallbackRate {
+  readonly proxy: string;
+  readonly rates: RateRow;
+  readonly updatedAt: string;
+}
+
+/**
+ * The whole editable table in one payload: every row, and the fallback rows fall
+ * through to.
+ *
+ * The fallback rides along because it is what makes a *deleted* row's consequence
+ * legible — remove a model and it prices at the fallback if one is declared, and
+ * resolves unknown if none is. An editor that showed the rows alone could not say
+ * which of those two a delete would cause.
+ */
+export interface RateTableSnapshot {
+  readonly proxy: string;
+  readonly models: readonly StoredModelRate[];
+  readonly fallback: StoredFallbackRate | null;
+}

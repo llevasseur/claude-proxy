@@ -137,9 +137,7 @@ Taken before charting; re-measure rather than trusting these if a ticket turns o
 | # | Task | Plan | Branch | Status | Note |
 |---|------|------|--------|--------|------|
 | 13 | cross-provider-token-series | [provider-seam-13-cross-provider-token-series](provider-seam-13-cross-provider-token-series.md) | `task/provider-seam-13-cross-provider-token-series` | todo | |
-| 14 | ui-pricing-crud-page | [provider-seam-14-ui-pricing-crud-page](provider-seam-14-ui-pricing-crud-page.md) | `task/provider-seam-14-ui-pricing-crud-page` | in-progress | |
 | 15 | ui-unknown-cost-treatment | [provider-seam-15-ui-unknown-cost-treatment](provider-seam-15-ui-unknown-cost-treatment.md) | `task/provider-seam-15-ui-unknown-cost-treatment` | in-progress | |
-| 16 | ui-fallback-stamp | [provider-seam-16-ui-fallback-stamp](provider-seam-16-ui-fallback-stamp.md) | `task/provider-seam-16-ui-fallback-stamp` | in-progress | |
 | 17 | ui-interrupted-resumed | [provider-seam-17-ui-interrupted-resumed](provider-seam-17-ui-interrupted-resumed.md) | `task/provider-seam-17-ui-interrupted-resumed` | todo | |
 | 18 | docs-feature-and-spec | [provider-seam-18-docs-feature-and-spec](provider-seam-18-docs-feature-and-spec.md) | `task/provider-seam-18-docs-feature-and-spec` | todo | |
 | zz | retire-done-plans | [provider-seam-zz-retire-done-plans](provider-seam-zz-retire-done-plans.md) | `task/provider-seam-zz-retire-done-plans` | todo | Final ticket — deletes every plan. Execute last. |
@@ -225,6 +223,85 @@ A gate is a commit on `wayfinder/provider-seam` with a green verify and an hones
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 14 — ui-pricing-crud-page · 2026-09-10 · [#328](https://github.com/llevasseur/claude-proxy/pull/328)
+
+`/pricing` is the operator's surface over ticket 06's rate table: four validated fields per
+model, a visible save state, and no JSON on the page. `stacks/claude/admin/src/routes/pricing.tsx`
+is the page, mounted by one line of `routes/registry.ts`; three new routes (`/api/pricing` and
+two origin-checked writes) are served by `stacks/claude/server/src/rate-table-api.ts`.
+
+**The validation rule went into core rather than into the page**, as `parseRateField`,
+`checkRateValue` and `checkModelName` in `rate-table.ts`. The form and the handler ask the same
+question, because a form that accepts what the server rejects tells an operator their correction
+landed while the corpus reprices to something else. The parser is deliberately narrower than
+`Number()`, which reads `0x10`, `1e5` and `Infinity` as numbers, and it holds the same
+six-decimal ceiling `pricing.ts` already applies to the catalogue — a rate table is exactly where
+a plausible-looking typo must not become a price.
+
+**Blank is not configured and never zero**, kept apart in type face as well as text: `not set` is
+dotted prose in the UI face, `0.00` a number in the mono face, with an amber marker on any row
+carrying a hole. **A failed save cannot be mistaken for one that landed** — the states differ in
+glyph, hue, tense and persistence, the green check decaying while the coral triangle stays until
+the operator acts. The reprices-history consequence is the page's standing frame rather than a
+modal, since ADR 0065 makes it true on every visit, and after a save the note names the bucket and
+the move. No dates anywhere, per ADR 0044.
+
+**Deviations.** The Fallback card is read-only — no edit, no withdraw, no fallback write routes —
+because the criteria scope the form to the four rates per model and ticket 16 owns the fallback
+surfaces; the declared fallback is still shown so a delete's consequence stays legible. The inline
+row edit is not a `<form>`, since one cannot span table cells, so Enter and Escape ride a handler
+on the row wrapper.
+
+**The three-phase protocol ran in full and earned its keep.** The Fable design agent's review of
+the implementation found four criterion failures the implementer had missed — inline validation
+hidden by a stylesheet rule expecting a collector element that was never rendered, a `saved` state
+unreachable because the success handler closed the row that held it, a silent failed delete, and a
+post-save line that neither named what moved nor skipped no-op saves — plus focus-management gaps.
+All are fixed in the branch's second commit.
+
+**Missing evidence, recorded rather than glossed:** there is no browser pass. Port 5173 was held by
+another process and `vite.config.ts` pins `strictPort`, so phase 3 was a source-level conformance
+review. The API half was exercised against a live server: `GET /api/pricing` answers 503 with a
+typed message when no substrate is open, and the writes refuse bad input at 400 naming the field.
+
+**Merge note for later tickets:** 16 and 14 both created
+`stacks/claude/admin/src/styles/components/pricing.css`. The conflict was textual only — 16's rules
+are all `.rate-*`, 14's all `.pricing-*` — and both survive in one sheet behind a single import
+placed after `skeleton.css` and `table.css`, which is what both halves need.
+
+### 16 — ui-fallback-stamp · 2026-09-10 · [#327](https://github.com/llevasseur/claude-proxy/pull/327)
+
+`GET /api/pricing/mix` folds the corpus to one row per model **in SQLite**, then resolves
+each against the rate table at the moment of the call. Nothing is cached at any layer — the
+store memoises nothing, the response carries no `immutable`, and the card holds its query at
+`staleTime: 0` with refetch on mount and focus. That is ADR 0065 taken literally rather than
+merely cited: an operator's rate edit moves the figure on the very next read.
+
+**The stamp is dashed, squared and uncoloured, and that is the whole design problem solved.**
+ADR 0044 makes a blanket rate a normal state, so a red badge or an alert icon would report an
+incident on every page load; it borrows the sheet's existing "placed by rule rather than
+observed" gesture and no hue at all. It names the proxy — `anthropic rate`, never the wire
+form `fallback:anthropic`, which reads as a defect to anyone who has not read the ADR.
+
+**A fallback price keeps its digits at full `--text` weight**, and that is what holds it apart
+from an unpriced one: a fallback is spendable money, an unknown is an absence. Ticket 15's
+unknown treatment was left untouched, and the design spec says explicitly what (c) may not
+borrow so the two states cannot converge.
+
+**Both shares take priced spend as the denominator, not all spend.** An unpriced model has no
+cost to take a share of, so folding it into the denominator would shrink the fallback share by
+counting an absence as published spend — the confidently-wrong figure ADR 0065 exists to stop.
+
+Deviations worth knowing. The card's scope is the whole corpus rather than a day window. The
+foot line names the Pricing page in **plain text**, because that route is ticket 14's and a
+typed `<Link to>` to a route this branch did not declare would not compile — turn it into a
+link once 14 lands. The three-phase design protocol ran in full and the reviewing subagent
+found three misses, two real (a `@layer` precedence bug that left the empty legend row at full
+weight, and a skeleton missing `.skeleton-text`) and one withdrawn on inspection; they are
+fixed in `8c359b6`. **In-browser verification did not run** — `scripts/dev-boot.sh` pins Vite
+to 5173, held by a concurrent sibling ticket — so the visual spec was verified statically and
+the endpoint was exercised over HTTP instead.
 
 ### 08 — provider-scoped-routes-and-fanout · 2026-09-10 · [#326](https://github.com/llevasseur/claude-proxy/pull/326)
 

@@ -378,6 +378,25 @@ export const API_ROUTES = [
   { path: '/api/ideas/area', provider: 'agnostic', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
   { path: '/api/ideas/comment', provider: 'agnostic', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
   { path: '/api/ideas/claim', provider: 'agnostic', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
+  // The rate table an operator edits, and its two writes.
+  //
+  // `anthropic` rather than `agnostic`: these rows are *this* proxy's prices, and each
+  // stack declares its own fallback, so a rate defensible here says nothing about another
+  // provider's corpus. There is no `valid_from` parameter and no as-of date anywhere in
+  // these three, because there is nothing to date — one current rate per model prices the
+  // whole corpus (ADR 0044), resolved on every read (ADR 0065).
+  { path: '/api/pricing', provider: 'anthropic', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
+  // Add or correct one model's four rates. `origin` like every write: an edit here
+  // reprices every historical total the dashboard shows.
+  { path: '/api/pricing/model', provider: 'anthropic', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
+  {
+    path: '/api/pricing/model/delete',
+    provider: 'anthropic',
+    methods: ['POST'],
+    kind: 'json',
+    cors: 'origin',
+    params: [],
+  },
   {
     path: '/api/notes',
     provider: 'agnostic',

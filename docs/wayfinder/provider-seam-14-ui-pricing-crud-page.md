@@ -2,7 +2,7 @@
 
 **Wayfinder:** `provider-seam`
 **Branch:** `task/provider-seam-14-ui-pricing-crud-page`
-**Status:** active
+**Status:** done · 2026-09-10
 
 Depends on ticket 06. **This ticket has a mandatory three-phase protocol — read it first.**
 

@@ -31,6 +31,7 @@ import type { NavEntry } from './nav';
 import { NAV_SECTION_ORDER } from './nav';
 import { nav as notesNav, providers as notesProviders, route as notesRoute } from './notes';
 import { nav as overviewNav, providers as overviewProviders, route as overviewRoute } from './overview';
+import { nav as pricingNav, providers as pricingProviders, route as pricingRoute } from './pricing';
 import { providers as projectDetailProviders, route as projectDetailRoute } from './project-detail';
 import { nav as projectsNav, providers as projectsProviders, route as projectsRoute } from './projects';
 import { providers as promptDetailProviders, route as promptDetailRoute } from './prompt-detail';
@@ -76,6 +77,7 @@ import { nav as withheldNav, providers as withheldProviders, route as withheldRo
  */
 export const ROUTES = [
   overviewRoute,
+  pricingRoute,
   trendsRoute,
   trendDetailRoute,
   promptDetailRoute,
@@ -135,6 +137,7 @@ export const ROUTES = [
  */
 export const MODULE_SUPPORT = [
   { route: overviewRoute, nav: overviewNav, providers: overviewProviders },
+  { route: pricingRoute, nav: pricingNav, providers: pricingProviders },
   { route: trendsRoute, nav: trendsNav, providers: trendsProviders },
   { route: trendDetailRoute, providers: trendDetailProviders },
   { route: promptDetailRoute, providers: promptDetailProviders },

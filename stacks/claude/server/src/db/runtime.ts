@@ -35,20 +35,19 @@ export function substrateSource(): SidecarSource | null {
 }
 
 /**
- * The running substrate's database, or `null` when it never opened.
+ * The open database itself, for the one dimension the log files do not hold.
  *
- * `readSource()` above is the accessor almost every route wants, because a route
- * that reads *sidecars* has a complete answer either way — the substrate is a
- * view over files that never went anywhere, so the file scan is a fallback
- * rather than a degradation.
+ * Every other route reads through {@link readSource}, because the substrate is a
+ * *view* over sidecars and the file scan can always answer instead. The rate table
+ * is not that: an operator types those rows in and nothing on disk carries them, so
+ * a caller that needs them needs this handle and has no second source to fall back
+ * to. That is also why this ignores `DB_READS` — the flag chooses between two
+ * backings of the same data, and here there is only one.
  *
- * This one is for the routes that read a table with **no file behind it**. The
- * rate tables are the case: an operator's rates live only in the database, so a
- * route over them cannot fall back to a scan and must be able to say the
- * substrate is not open rather than answer as though the tables were empty —
- * which would be the "absence rendered as a real measurement" that
- * [ADR 0060](../../../../../docs/adrs/0060-a-stores-absence-is-typed.md) refuses.
- * Returning `null` rather than throwing is what lets the caller say so.
+ * `null` when the substrate never opened, which callers must answer as unavailable
+ * rather than as an empty table: no rows and no database are different facts, and
+ * showing the second as the first would invite an operator to re-enter a table that
+ * is still there.
  */
 export function substrateDb(): DatabaseSync | null {
   return handle?.db ?? null;

@@ -155,6 +155,13 @@ import {
 } from './notes-remote.js';
 import { shadowCheck, shadowEnabled } from './parity.js';
 import { resolveProjectsDir } from './projects.js';
+import {
+  applyModelRateDelete,
+  applyModelRateEdit,
+  RATE_TABLE_UNAVAILABLE_MESSAGE,
+  RateTableUnavailableError,
+  readRateTableSnapshot,
+} from './rate-table-api.js';
 import { resolveSessionFile, resolveSessionsDir } from './sessions.js';
 import { resolveSettingsPath } from './settings.js';
 import { resolveSystemPromptPath } from './system-prompt.js';
@@ -882,6 +889,28 @@ async function servePost<T>(
     const msg = errorMessage(err);
     send(res, errorStatus(msg), { error: msg }, cors);
   }
+}
+
+/**
+ * A rate-table read that could not answer.
+ *
+ * A server with no open substrate is a 503 — the table is somewhere else, and the
+ * caller should say so rather than render an empty table an operator would then try
+ * to re-enter. Anything else is this server's fault, so it is a 500.
+ */
+function pricingError(res: http.ServerResponse, cause: unknown): void {
+  const status = cause instanceof RateTableUnavailableError ? 503 : 500;
+  send(res, status, { error: errorMessage(cause) });
+}
+
+/**
+ * The same split for a write. `servePost` hands its status function the message
+ * rather than the error, so this compares against the exported constant instead of
+ * re-typing the sentence. Everything else a rate write throws is a bad request: the
+ * body named no model, or a rate the table will not take.
+ */
+function pricingErrorStatus(message: string): number {
+  return message === RATE_TABLE_UNAVAILABLE_MESSAGE ? 503 : 400;
 }
 
 function notesError(res: http.ServerResponse, cause: unknown, cors: HeaderMap = CORS): void {
@@ -1696,6 +1725,29 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
       (body) => applyIdeaClaim(parseIdeaClaims(body.claims)),
       () => 400,
     );
+  },
+  // The rate table the pricing page edits. A read, and the two writes behind it.
+  //
+  // Unlike every route above, these do not go through `readSource()`: an operator's
+  // rates exist only in the substrate, so there is no file scan that could answer
+  // instead. A server with no open substrate says so with a 503 rather than serving an
+  // empty table, because "no rows" and "no database" would look identical on the page
+  // and the second invites re-entering a table that is still there.
+  '/api/pricing': async ({ res }) => {
+    try {
+      send(res, 200, readRateTableSnapshot());
+    } catch (cause) {
+      pricingError(res, cause);
+    }
+  },
+  // Correcting a rate reprices every historical total this server reports, with no
+  // backfill and nothing to invalidate (ADR 0065) — which is why the page carrying this
+  // says so rather than presenting it as an ordinary save.
+  '/api/pricing/model': async ({ req, res }) => {
+    await servePost(req, res, async (body) => applyModelRateEdit(body), pricingErrorStatus);
+  },
+  '/api/pricing/model/delete': async ({ req, res }) => {
+    await servePost(req, res, async (body) => applyModelRateDelete(body), pricingErrorStatus);
   },
   '/api/notes': (ctx) => serveNotesList(ctx, false),
   '/api/notes/stream': (ctx) => serveNotesList(ctx, true),

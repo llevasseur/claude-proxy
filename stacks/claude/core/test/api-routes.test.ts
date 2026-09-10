@@ -80,6 +80,11 @@ describe('API_ROUTES', () => {
       '/api/ideas/area',
       '/api/ideas/comment',
       '/api/ideas/claim',
+      // The rate table's two writes. An edit here reprices every historical total
+      // this server reports, which is why they take the origin check rather than
+      // the open CORS the read beside them uses.
+      '/api/pricing/model',
+      '/api/pricing/model/delete',
       '/api/notes/create',
       '/api/notes/update',
       '/api/notes/archive',
