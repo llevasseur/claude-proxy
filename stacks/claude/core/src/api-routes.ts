@@ -10,7 +10,24 @@
  * **Response types are types, not runtime entries.** The binding is a compile-time map
  * keyed by the paths below, so a route with no response type is a type error at the
  * client helper rather than a silent `unknown`.
+ *
+ * ## Every route says whose data it reads
+ *
+ * Each declaration carries a {@link ApiRouteProvider}, and that field is what makes
+ * "provider-scoped" a property of the manifest rather than a convention handlers are
+ * trusted to keep. `docs/adrs/0046-narrowly-scoped-local-writes.md` gives each store one
+ * controller and `docs/adrs/0062-three-servers-and-one-moved-port.md` refuses one process
+ * reading three stores, so **this server answers only for its own provider**: the
+ * dispatcher rejects a route scoped to another one instead of serving it, and a request
+ * for Anthropic therefore cannot reach the OpenAI or Ox Alpha store by any path.
+ *
+ * The field is not a filter the dashboard applies — it is the declaration a filter would
+ * have had to duplicate. A page that reads several providers asks **several origins** for
+ * the same path (`admin/src/provider-fanout.ts`); it never asks one server for another
+ * server's provider.
  */
+
+import type { ProviderId } from './adapter-seam.js';
 
 /** The methods a route answers. Everything else gets a 405. */
 export type ApiMethod = 'GET' | 'POST';
@@ -24,10 +41,31 @@ export type ApiRouteKind = 'json' | 'sse';
  */
 export type ApiRouteCors = 'open' | 'origin';
 
+/**
+ * Whose store a route reads: one provider, or none at all.
+ *
+ * `agnostic` is not "every provider" — it is **no provider corpus**. The device and
+ * repository ledgers (jobs, notes, ideas, concepts, pull requests, the health probe) are
+ * not a proxy's observations, so they are the same answer whichever provider the picker
+ * is on, and fanning them out over three origins would ask three servers one question
+ * with one answer. A route naming a {@link ProviderId} reads that provider's corpus and
+ * only that one.
+ *
+ * The distinction matters at exactly one place — the dispatcher's scope gate — and it is
+ * the reason that gate can be total: every route is either this server's provider's, or
+ * nobody's.
+ */
+export type ApiRouteProvider = ProviderId | 'agnostic';
+
 /** A route's declaration: what it is called, what it answers, and what it reads. */
 export interface ApiRouteDeclaration {
   /** Pathname the server dispatches on and the client fetches. */
   readonly path: string;
+  /**
+   * Whose store this route reads. A server serves a route only when this is its own
+   * provider or `agnostic`; anything else is a misdirected request, not a 404.
+   */
+  readonly provider: ApiRouteProvider;
   /** Methods it answers. A route answering both lists the read first. */
   readonly methods: readonly ApiMethod[];
   readonly kind: ApiRouteKind;
@@ -39,10 +77,11 @@ export interface ApiRouteDeclaration {
 }
 
 export const API_ROUTES = [
-  { path: '/api/health', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
-  { path: '/api/summary', methods: ['GET'], kind: 'json', cors: 'open', params: ['date'] },
+  { path: '/api/health', provider: 'agnostic', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
+  { path: '/api/summary', provider: 'anthropic', methods: ['GET'], kind: 'json', cors: 'open', params: ['date'] },
   {
     path: '/api/summary/stream',
+    provider: 'anthropic',
     methods: ['GET'],
     kind: 'sse',
     cors: 'open',
@@ -50,18 +89,55 @@ export const API_ROUTES = [
     streamOf: '/api/summary',
   },
   // `models` is a comma-separated list; absent means every model the days hold.
-  { path: '/api/trends', methods: ['GET'], kind: 'json', cors: 'open', params: ['days', 'models'] },
-  { path: '/api/prompt-mix', methods: ['GET'], kind: 'json', cors: 'open', params: ['days'] },
-  { path: '/api/prompt', methods: ['GET'], kind: 'json', cors: 'open', params: ['hash', 'days'] },
-  { path: '/api/prompt/section', methods: ['GET'], kind: 'json', cors: 'open', params: ['hash', 'index', 'days'] },
-  { path: '/api/tool-schema', methods: ['GET'], kind: 'json', cors: 'open', params: ['name', 'days'] },
-  { path: '/api/usage', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
-  { path: '/api/usage/stream', methods: ['GET'], kind: 'sse', cors: 'open', params: [], streamOf: '/api/usage' },
-  { path: '/api/tools', methods: ['GET'], kind: 'json', cors: 'open', params: ['date'] },
+  {
+    path: '/api/trends',
+    provider: 'anthropic',
+    methods: ['GET'],
+    kind: 'json',
+    cors: 'open',
+    params: ['days', 'models'],
+  },
+  { path: '/api/prompt-mix', provider: 'anthropic', methods: ['GET'], kind: 'json', cors: 'open', params: ['days'] },
+  {
+    path: '/api/prompt',
+    provider: 'anthropic',
+    methods: ['GET'],
+    kind: 'json',
+    cors: 'open',
+    params: ['hash', 'days'],
+  },
+  {
+    path: '/api/prompt/section',
+    provider: 'anthropic',
+    methods: ['GET'],
+    kind: 'json',
+    cors: 'open',
+    params: ['hash', 'index', 'days'],
+  },
+  {
+    path: '/api/tool-schema',
+    provider: 'anthropic',
+    methods: ['GET'],
+    kind: 'json',
+    cors: 'open',
+    params: ['name', 'days'],
+  },
+  { path: '/api/usage', provider: 'anthropic', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
+  {
+    path: '/api/usage/stream',
+    provider: 'anthropic',
+    methods: ['GET'],
+    kind: 'sse',
+    cors: 'open',
+    params: [],
+    streamOf: '/api/usage',
+  },
+  { path: '/api/tools', provider: 'anthropic', methods: ['GET'], kind: 'json', cors: 'open', params: ['date'] },
   // The table's order and slice ride the query string: the window is summarized whole
   // and shipped one page of thread rows at a time, so a month is not a 30 MB answer.
   {
     path: '/api/context',
+    provider: 'anthropic',
     methods: ['GET'],
     kind: 'json',
     cors: 'open',
@@ -69,7 +145,7 @@ export const API_ROUTES = [
   },
   // One reporting day of that window, on its own — a caller composes a window from these.
   // `?date=` omitted means the day in progress.
-  { path: '/api/context/day', methods: ['GET'], kind: 'json', cors: 'open', params: ['date'] },
+  { path: '/api/context/day', provider: 'anthropic', methods: ['GET'], kind: 'json', cors: 'open', params: ['date'] },
   // The one day of that window that can still change, pushed as captures land. **No
   // `date`**: a closed day is answered `immutable` and cannot move, so leaving the
   // parameter off makes a closed day unsayable here rather than refused at subscribe time.
@@ -77,13 +153,21 @@ export const API_ROUTES = [
   // midnight follows the rollover.
   {
     path: '/api/context/day/stream',
+    provider: 'anthropic',
     methods: ['GET'],
     kind: 'sse',
     cors: 'open',
     params: [],
     streamOf: '/api/context/day',
   },
-  { path: '/api/context/thread', methods: ['GET'], kind: 'json', cors: 'open', params: ['thread', 'days'] },
+  {
+    path: '/api/context/thread',
+    provider: 'anthropic',
+    methods: ['GET'],
+    kind: 'json',
+    cors: 'open',
+    params: ['thread', 'days'],
+  },
   // One thread's requests, pushed as its captures land. **`thread` is required and `days`
   // mirrors the JSON route**: the frame replaces that route's answer in the reader's
   // cache, so it has to be the answer for the same thread over the same window. Whether a
@@ -91,64 +175,177 @@ export const API_ROUTES = [
   // — and a caller that subscribes to a finished one gets a stream that never pushes.
   {
     path: '/api/context/thread/stream',
+    provider: 'anthropic',
     methods: ['GET'],
     kind: 'sse',
     cors: 'open',
     params: ['thread', 'days'],
     streamOf: '/api/context/thread',
   },
-  { path: '/api/context/detail', methods: ['GET'], kind: 'json', cors: 'open', params: ['file'] },
-  { path: '/api/context/message', methods: ['GET'], kind: 'json', cors: 'open', params: ['file', 'index'] },
-  { path: '/api/context/tool', methods: ['GET'], kind: 'json', cors: 'open', params: ['file', 'index'] },
-  { path: '/api/projects', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
-  { path: '/api/projects/memories', methods: ['GET'], kind: 'json', cors: 'open', params: ['project'] },
-  { path: '/api/projects/memory', methods: ['GET'], kind: 'json', cors: 'open', params: ['project', 'name'] },
-  { path: '/api/jobs', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
-  { path: '/api/jobs/job', methods: ['GET'], kind: 'json', cors: 'open', params: ['id'] },
-  { path: '/api/jobs/file', methods: ['GET'], kind: 'json', cors: 'open', params: ['id', 'file'] },
+  {
+    path: '/api/context/detail',
+    provider: 'anthropic',
+    methods: ['GET'],
+    kind: 'json',
+    cors: 'open',
+    params: ['file'],
+  },
+  {
+    path: '/api/context/message',
+    provider: 'anthropic',
+    methods: ['GET'],
+    kind: 'json',
+    cors: 'open',
+    params: ['file', 'index'],
+  },
+  {
+    path: '/api/context/tool',
+    provider: 'anthropic',
+    methods: ['GET'],
+    kind: 'json',
+    cors: 'open',
+    params: ['file', 'index'],
+  },
+  { path: '/api/projects', provider: 'anthropic', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
+  {
+    path: '/api/projects/memories',
+    provider: 'anthropic',
+    methods: ['GET'],
+    kind: 'json',
+    cors: 'open',
+    params: ['project'],
+  },
+  {
+    path: '/api/projects/memory',
+    provider: 'anthropic',
+    methods: ['GET'],
+    kind: 'json',
+    cors: 'open',
+    params: ['project', 'name'],
+  },
+  { path: '/api/jobs', provider: 'agnostic', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
+  { path: '/api/jobs/job', provider: 'agnostic', methods: ['GET'], kind: 'json', cors: 'open', params: ['id'] },
+  {
+    path: '/api/jobs/file',
+    provider: 'agnostic',
+    methods: ['GET'],
+    kind: 'json',
+    cors: 'open',
+    params: ['id', 'file'],
+  },
   // The one destructive route: removes a `~/.claude/jobs/<id>` directory from disk.
-  { path: '/api/jobs/delete', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
-  { path: '/api/sessions', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
-  { path: '/api/sessions/stream', methods: ['GET'], kind: 'sse', cors: 'open', params: [], streamOf: '/api/sessions' },
+  { path: '/api/jobs/delete', provider: 'agnostic', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
+  { path: '/api/sessions', provider: 'anthropic', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
+  {
+    path: '/api/sessions/stream',
+    provider: 'anthropic',
+    methods: ['GET'],
+    kind: 'sse',
+    cors: 'open',
+    params: [],
+    streamOf: '/api/sessions',
+  },
   {
     path: '/api/sessions/session/stream',
+    provider: 'anthropic',
     methods: ['GET'],
     kind: 'sse',
     cors: 'open',
     params: ['id'],
     streamOf: '/api/sessions/session',
   },
-  { path: '/api/sessions/graph', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
-  { path: '/api/sessions/liveness', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
-  { path: '/api/sessions/node-text', methods: ['GET'], kind: 'json', cors: 'open', params: ['id'] },
-  { path: '/api/sessions/graph/nodes', methods: ['GET'], kind: 'json', cors: 'open', params: ['id'] },
-  { path: '/api/sessions/session', methods: ['GET'], kind: 'json', cors: 'open', params: ['id'] },
-  { path: '/api/sessions/breakdown', methods: ['GET'], kind: 'json', cors: 'open', params: ['id'] },
-  { path: '/api/commands', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
-  { path: '/api/commands/stream', methods: ['GET'], kind: 'sse', cors: 'open', params: [], streamOf: '/api/commands' },
-  { path: '/api/commands/command', methods: ['GET'], kind: 'json', cors: 'open', params: ['name', 'flags'] },
+  { path: '/api/sessions/graph', provider: 'anthropic', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
+  { path: '/api/sessions/liveness', provider: 'anthropic', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
+  {
+    path: '/api/sessions/node-text',
+    provider: 'anthropic',
+    methods: ['GET'],
+    kind: 'json',
+    cors: 'open',
+    params: ['id'],
+  },
+  {
+    path: '/api/sessions/graph/nodes',
+    provider: 'anthropic',
+    methods: ['GET'],
+    kind: 'json',
+    cors: 'open',
+    params: ['id'],
+  },
+  {
+    path: '/api/sessions/session',
+    provider: 'anthropic',
+    methods: ['GET'],
+    kind: 'json',
+    cors: 'open',
+    params: ['id'],
+  },
+  {
+    path: '/api/sessions/breakdown',
+    provider: 'anthropic',
+    methods: ['GET'],
+    kind: 'json',
+    cors: 'open',
+    params: ['id'],
+  },
+  { path: '/api/commands', provider: 'anthropic', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
+  {
+    path: '/api/commands/stream',
+    provider: 'anthropic',
+    methods: ['GET'],
+    kind: 'sse',
+    cors: 'open',
+    params: [],
+    streamOf: '/api/commands',
+  },
+  {
+    path: '/api/commands/command',
+    provider: 'anthropic',
+    methods: ['GET'],
+    kind: 'json',
+    cors: 'open',
+    params: ['name', 'flags'],
+  },
   {
     path: '/api/commands/command/stream',
+    provider: 'anthropic',
     methods: ['GET'],
     kind: 'sse',
     cors: 'open',
     params: ['name', 'flags'],
     streamOf: '/api/commands/command',
   },
-  { path: '/api/commands/run', methods: ['GET'], kind: 'json', cors: 'open', params: ['id'] },
+  { path: '/api/commands/run', provider: 'anthropic', methods: ['GET'], kind: 'json', cors: 'open', params: ['id'] },
   {
     path: '/api/commands/run/stream',
+    provider: 'anthropic',
     methods: ['GET'],
     kind: 'sse',
     cors: 'open',
     params: ['id'],
     streamOf: '/api/commands/run',
   },
-  { path: '/api/concepts', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
-  { path: '/api/concepts/stream', methods: ['GET'], kind: 'sse', cors: 'open', params: [], streamOf: '/api/concepts' },
-  { path: '/api/concepts/concept', methods: ['GET'], kind: 'json', cors: 'open', params: ['ord'] },
+  { path: '/api/concepts', provider: 'agnostic', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
+  {
+    path: '/api/concepts/stream',
+    provider: 'agnostic',
+    methods: ['GET'],
+    kind: 'sse',
+    cors: 'open',
+    params: [],
+    streamOf: '/api/concepts',
+  },
+  {
+    path: '/api/concepts/concept',
+    provider: 'agnostic',
+    methods: ['GET'],
+    kind: 'json',
+    cors: 'open',
+    params: ['ord'],
+  },
   {
     path: '/api/concepts/concept/stream',
+    provider: 'agnostic',
     methods: ['GET'],
     kind: 'sse',
     cors: 'open',
@@ -157,10 +354,18 @@ export const API_ROUTES = [
   },
   // Searched by prose rather than by the listing's columns. No stream — a search is a
   // question a reader asked, not a view that follows the store.
-  { path: '/api/concepts/search', methods: ['GET'], kind: 'json', cors: 'open', params: ['q'] },
-  { path: '/api/ideas', methods: ['GET'], kind: 'json', cors: 'open', params: ['status', 'repo', 'area'] },
+  { path: '/api/concepts/search', provider: 'agnostic', methods: ['GET'], kind: 'json', cors: 'open', params: ['q'] },
+  {
+    path: '/api/ideas',
+    provider: 'agnostic',
+    methods: ['GET'],
+    kind: 'json',
+    cors: 'open',
+    params: ['status', 'repo', 'area'],
+  },
   {
     path: '/api/ideas/stream',
+    provider: 'agnostic',
     methods: ['GET'],
     kind: 'sse',
     cors: 'open',
@@ -169,63 +374,156 @@ export const API_ROUTES = [
   },
   // The ledger's four writes. `origin` rather than `open`: the file is device-wide, and
   // its `accepted` rows are what `/improve` acts on.
-  { path: '/api/ideas/status', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
-  { path: '/api/ideas/area', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
-  { path: '/api/ideas/comment', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
-  { path: '/api/ideas/claim', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
-  { path: '/api/notes', methods: ['GET'], kind: 'json', cors: 'open', params: ['cursor', 'limit', 'archived'] },
+  { path: '/api/ideas/status', provider: 'agnostic', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
+  { path: '/api/ideas/area', provider: 'agnostic', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
+  { path: '/api/ideas/comment', provider: 'agnostic', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
+  { path: '/api/ideas/claim', provider: 'agnostic', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
+  {
+    path: '/api/notes',
+    provider: 'agnostic',
+    methods: ['GET'],
+    kind: 'json',
+    cors: 'open',
+    params: ['cursor', 'limit', 'archived'],
+  },
   {
     path: '/api/notes/stream',
+    provider: 'agnostic',
     methods: ['GET'],
     kind: 'sse',
     cors: 'open',
     params: ['cursor', 'limit', 'archived'],
     streamOf: '/api/notes',
   },
-  { path: '/api/notes/search', methods: ['GET'], kind: 'json', cors: 'open', params: ['q', 'cursor', 'limit'] },
-  { path: '/api/notes/note', methods: ['GET'], kind: 'json', cors: 'open', params: ['id'] },
-  { path: '/api/notes/create', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
-  { path: '/api/notes/update', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
-  { path: '/api/notes/archive', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
-  { path: '/api/notes/restore', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
-  { path: '/api/sessions/suggestions', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
-  { path: '/api/sessions/suggestions/bucket', methods: ['GET'], kind: 'json', cors: 'open', params: ['index'] },
+  {
+    path: '/api/notes/search',
+    provider: 'agnostic',
+    methods: ['GET'],
+    kind: 'json',
+    cors: 'open',
+    params: ['q', 'cursor', 'limit'],
+  },
+  { path: '/api/notes/note', provider: 'agnostic', methods: ['GET'], kind: 'json', cors: 'open', params: ['id'] },
+  { path: '/api/notes/create', provider: 'agnostic', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
+  { path: '/api/notes/update', provider: 'agnostic', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
+  { path: '/api/notes/archive', provider: 'agnostic', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
+  { path: '/api/notes/restore', provider: 'agnostic', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
+  {
+    path: '/api/sessions/suggestions',
+    provider: 'anthropic',
+    methods: ['GET'],
+    kind: 'json',
+    cors: 'open',
+    params: [],
+  },
+  {
+    path: '/api/sessions/suggestions/bucket',
+    provider: 'anthropic',
+    methods: ['GET'],
+    kind: 'json',
+    cors: 'open',
+    params: ['index'],
+  },
   // A GET list and a POST that writes the flags, on one path — so the GET answers under
   // the narrow headers too.
   {
     path: '/api/sessions/suggestions/status',
+    provider: 'anthropic',
     methods: ['GET', 'POST'],
     kind: 'json',
     cors: 'origin',
     params: ['range', 'status', 'recurrence', 'detail'],
   },
-  { path: '/api/sessions/errors', methods: ['GET'], kind: 'json', cors: 'open', params: ['id'] },
-  { path: '/api/chat/config', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
-  { path: '/api/chat/running', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
-  { path: '/api/chat/thread', methods: ['GET'], kind: 'json', cors: 'open', params: ['sessionId'] },
+  { path: '/api/sessions/errors', provider: 'anthropic', methods: ['GET'], kind: 'json', cors: 'open', params: ['id'] },
+  { path: '/api/chat/config', provider: 'anthropic', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
+  { path: '/api/chat/running', provider: 'anthropic', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
+  {
+    path: '/api/chat/thread',
+    provider: 'anthropic',
+    methods: ['GET'],
+    kind: 'json',
+    cors: 'open',
+    params: ['sessionId'],
+  },
   // A GET, so not a write — but it carries the chat's own content, so it answers the
   // dashboard's origins rather than the open `*`.
-  { path: '/api/chat/stream', methods: ['GET'], kind: 'sse', cors: 'origin', params: ['sessionId'] },
-  { path: '/api/chat/sessions', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
-  { path: '/api/chat/sessions/message', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
-  { path: '/api/chat/stop', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
-  { path: '/api/chat/sessions/end', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
-  { path: '/api/skim', methods: ['GET'], kind: 'json', cors: 'open', params: ['date'] },
-  { path: '/api/skim/trend', methods: ['GET'], kind: 'json', cors: 'open', params: ['days'] },
-  { path: '/api/withheld', methods: ['GET'], kind: 'json', cors: 'open', params: ['days'] },
-  { path: '/api/pull-requests', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
+  {
+    path: '/api/chat/stream',
+    provider: 'anthropic',
+    methods: ['GET'],
+    kind: 'sse',
+    cors: 'origin',
+    params: ['sessionId'],
+  },
+  { path: '/api/chat/sessions', provider: 'anthropic', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
+  {
+    path: '/api/chat/sessions/message',
+    provider: 'anthropic',
+    methods: ['POST'],
+    kind: 'json',
+    cors: 'origin',
+    params: [],
+  },
+  { path: '/api/chat/stop', provider: 'anthropic', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
+  {
+    path: '/api/chat/sessions/end',
+    provider: 'anthropic',
+    methods: ['POST'],
+    kind: 'json',
+    cors: 'origin',
+    params: [],
+  },
+  { path: '/api/skim', provider: 'anthropic', methods: ['GET'], kind: 'json', cors: 'open', params: ['date'] },
+  { path: '/api/skim/trend', provider: 'anthropic', methods: ['GET'], kind: 'json', cors: 'open', params: ['days'] },
+  { path: '/api/withheld', provider: 'anthropic', methods: ['GET'], kind: 'json', cors: 'open', params: ['days'] },
+  { path: '/api/pull-requests', provider: 'agnostic', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
   // One pull request's body — what the drawer asks for when it opens.
-  { path: '/api/pull-requests/body', methods: ['GET'], kind: 'json', cors: 'open', params: ['number'] },
+  {
+    path: '/api/pull-requests/body',
+    provider: 'agnostic',
+    methods: ['GET'],
+    kind: 'json',
+    cors: 'open',
+    params: ['number'],
+  },
   // Moving `main` is shared, remote and irreversible in the sense that everyone sees it.
-  { path: '/api/main-history/slide', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
-  { path: '/api/main-history/sync-local', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
-  { path: '/api/main-history/hide', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
-  { path: '/api/hooks-plugins', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
-  { path: '/api/cli-internals', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
-  { path: '/api/cli-internals/function', methods: ['GET'], kind: 'json', cors: 'open', params: ['id'] },
+  {
+    path: '/api/main-history/slide',
+    provider: 'agnostic',
+    methods: ['POST'],
+    kind: 'json',
+    cors: 'origin',
+    params: [],
+  },
+  {
+    path: '/api/main-history/sync-local',
+    provider: 'agnostic',
+    methods: ['POST'],
+    kind: 'json',
+    cors: 'origin',
+    params: [],
+  },
+  { path: '/api/main-history/hide', provider: 'agnostic', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
+  { path: '/api/hooks-plugins', provider: 'anthropic', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
+  { path: '/api/cli-internals', provider: 'anthropic', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
+  {
+    path: '/api/cli-internals/function',
+    provider: 'anthropic',
+    methods: ['GET'],
+    kind: 'json',
+    cors: 'open',
+    params: ['id'],
+  },
   // A GET of `~/.claude/CLAUDE.md`, and a POST that rewrites it.
-  { path: '/api/system-prompt', methods: ['GET', 'POST'], kind: 'json', cors: 'origin', params: [] },
-  { path: '/api/filters', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
+  {
+    path: '/api/system-prompt',
+    provider: 'anthropic',
+    methods: ['GET', 'POST'],
+    kind: 'json',
+    cors: 'origin',
+    params: [],
+  },
+  { path: '/api/filters', provider: 'anthropic', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
 ] as const satisfies readonly ApiRouteDeclaration[];
 
 /** One entry of the manifest, with its literal path, methods and parameters preserved. */
@@ -251,6 +549,38 @@ export type ApiWritePath = Extract<ApiRoute, { methods: readonly ['POST'] | read
 
 /** Paths served as Server-Sent Events. */
 export type ApiStreamPath = Extract<ApiRoute, { kind: 'sse' }>['path'];
+
+/** Paths that read one provider's corpus — the fan-out surface. */
+export type ApiProviderScopedPath = Exclude<ApiRoute, { provider: 'agnostic' }>['path'];
+
+/** Paths that read no provider corpus, and are therefore the same answer under any provider. */
+export type ApiAgnosticPath = Extract<ApiRoute, { provider: 'agnostic' }>['path'];
+
+/**
+ * The fan-out surface: a JSON GET that reads one provider's corpus.
+ *
+ * An intersection of two literal unions, so it is exactly their overlap. This is the
+ * domain of the dashboard's three-origin client — asking three servers for an agnostic
+ * route would be three copies of one answer, and asking them for a write would be three
+ * writes.
+ */
+export type ApiProviderJsonGetPath = ApiJsonGetPath & ApiProviderScopedPath;
+
+/**
+ * Whether a server serving `served` may answer this route.
+ *
+ * The whole scope rule, in one predicate, so the dispatcher and the tests that police it
+ * cannot drift apart. `agnostic` is answered by every server because it reads no
+ * provider's corpus; anything else is answered only by the provider that owns it.
+ */
+export function apiRouteServedBy(route: ApiRouteDeclaration, served: ProviderId): boolean {
+  return route.provider === 'agnostic' || route.provider === served;
+}
+
+/** Every declared route a server for `served` answers. */
+export function apiRoutesFor(served: ProviderId): readonly ApiRoute[] {
+  return API_ROUTES.filter((route) => apiRouteServedBy(route, served));
+}
 
 const BY_PATH = new Map<string, ApiRoute>(API_ROUTES.map((route) => [route.path, route]));
 

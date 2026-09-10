@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import {
   type ProviderEnvelope,
   type ProviderId,
+  type ProviderUnavailableReason,
   providerAvailable,
   providerUnavailable,
   providerUnreachable,
@@ -148,19 +149,30 @@ export async function readProviderStore<T>(source: ProviderStoreSource<T>): Prom
   try {
     return providerAvailable<T>(source.provider, await source.read());
   } catch (thrown) {
-    const failure: StoreReadFailure =
-      thrown instanceof Error ? failureFrom(thrown) : { message: String(thrown), code: '' };
-    if (thrown instanceof ProviderUnreachableError) {
-      return providerUnavailable<T>(
-        source.provider,
-        providerUnreachable(source.provider, thrown.origin, failure.message),
-      );
-    }
-    return providerUnavailable<T>(
-      source.provider,
-      storeUnreadable(source.provider, sqliteFaultFrom(failure), failure.message),
-    );
+    return providerUnavailable<T>(source.provider, localReadFailureReason(source.provider, thrown));
   }
+}
+
+/**
+ * Classify a failed provider read into the typed reason for it.
+ *
+ * Exported because two callers must agree: {@link readProviderStore} above, and the
+ * server's own error path, which attaches this to the body of a failed provider-scoped
+ * route so the dashboard receives a reason rather than a status code to guess from. A
+ * second classifier written at either site is how `provider-unreachable` and
+ * `store-unreadable` start diverging — the misattribution ADR 0062 exists to prevent.
+ */
+// This function *is* the catch boundary the rule asks callers to parse at: a `catch` binding
+// is `unknown` by construction, and giving this a domain parameter would only move the same
+// decode to both call sites and duplicate it — the divergence a shared classifier prevents.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- see the note above.
+export function localReadFailureReason(provider: ProviderId, thrown: unknown): ProviderUnavailableReason {
+  const failure: StoreReadFailure =
+    thrown instanceof Error ? failureFrom(thrown) : { message: String(thrown), code: '' };
+  if (thrown instanceof ProviderUnreachableError) {
+    return providerUnreachable(provider, thrown.origin, failure.message);
+  }
+  return storeUnreadable(provider, sqliteFaultFrom(failure), failure.message);
 }
 
 /**

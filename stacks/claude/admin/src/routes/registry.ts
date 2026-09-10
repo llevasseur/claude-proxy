@@ -227,6 +227,72 @@ export function navRailFor(provider: ProviderId) {
 export const NAV_RAIL = navRailFor(DEFAULT_PROVIDER);
 
 /**
+ * Where a page the new provider cannot serve sends its reader: the Overview, which
+ * [ADR 0041](../../../../../docs/adrs/0041-provider-picker-drives-the-navigation.md) picks
+ * because it is "the one station every provider has".
+ */
+export const PROVIDER_FALLBACK_PATH = '/' as const;
+
+/**
+ * Whether one route pattern describes this pathname.
+ *
+ * Segment-wise rather than by string equality, because a route path may name parameters —
+ * `/sessions/$id` has to match `/sessions/abc`. A `$` segment matches any single segment
+ * and nothing spans two, which is exactly TanStack's own rule for these patterns.
+ */
+function pathMatches(pattern: string, pathname: string): boolean {
+  const expected = pattern.split('/').filter(Boolean);
+  const actual = pathname.split('/').filter(Boolean);
+  if (expected.length !== actual.length) return false;
+  return expected.every((segment, index) => segment.startsWith('$') || segment === actual[index]);
+}
+
+/** What the picker should do about the page currently open. */
+export type ProviderRedirect =
+  /** This page serves the provider — nothing to do. */
+  | { readonly kind: 'stay' }
+  /** This page cannot serve the provider; send the reader to the Overview and say so. */
+  | {
+      readonly kind: 'redirect';
+      readonly to: typeof PROVIDER_FALLBACK_PATH;
+      readonly from: string;
+      readonly provider: ProviderId;
+      /** One sentence for the announcement ADR 0041 requires; the redirect is never silent. */
+      readonly announcement: string;
+    };
+
+/**
+ * The redirect guard: switching to `provider` while `pathname` is open.
+ *
+ * [ADR 0041](../../../../../docs/adrs/0041-provider-picker-drives-the-navigation.md) states
+ * the rule — "switching provider on a page the new provider does not support redirects to
+ * the Overview" — and that the change is **announced rather than silent**, since "an
+ * operator who switched provider and lost their page should be able to see why". So this
+ * returns the sentence along with the destination instead of leaving each caller to invent
+ * one.
+ *
+ * **It reads `MODULE_SUPPORT` and keeps no list of its own.** That is the whole reason the
+ * `providers` declaration sits on the module: the rail above and this guard ask the same
+ * question of the same data, so a page cannot be reachable under a provider the rail hides
+ * it from, or hidden from one it would happily serve.
+ *
+ * A pathname no module matches is left alone. An unrouted URL is the router's own 404 to
+ * answer, and redirecting it here would convert every mistyped address into a silent bounce
+ * to the Overview.
+ */
+export function providerRedirectFor(pathname: string, provider: ProviderId): ProviderRedirect {
+  const module = MODULE_SUPPORT.find((entry) => pathMatches(entry.route.path, pathname));
+  if (!module || supportsProvider(module.providers, provider)) return { kind: 'stay' };
+  return {
+    kind: 'redirect',
+    to: PROVIDER_FALLBACK_PATH,
+    from: pathname,
+    provider,
+    announcement: `${pathname} has no data for ${provider} — showing the Overview instead`,
+  };
+}
+
+/**
  * Type-level guards for the three things that degrade **silently** — no runtime check and
  * no other gate would catch any of them, and `typecheck` is this package's only gate.
  *

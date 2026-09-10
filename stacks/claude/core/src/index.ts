@@ -27,6 +27,7 @@ export * from './prompt-mix.js';
 export * from './prompt-text.js';
 export * from './provenance.js';
 export * from './provider-adapter.js';
+export * from './provider-transport.js';
 export * from './pull-requests.js';
 export * from './rate-table.js';
 export * from './sessions.js';

@@ -7,6 +7,8 @@ import {
   type ApiRoute,
   type ApiRoutePath,
   apiRoute,
+  apiRouteServedBy,
+  apiRoutesFor,
   type IdeaFilter,
   type IdeaStatus,
   isApiWriteRoute,
@@ -16,6 +18,7 @@ import {
   isSuggestionRecurrence,
   isSuggestionStatus,
   isThreadId,
+  MISDIRECTED_PROVIDER_STATUS,
   parseBucketRange,
   parseIdeaClaims,
   parseIdeaComments,
@@ -115,6 +118,7 @@ import { RemoteConceptStoreError, remoteConceptStore } from './concepts-remote.j
 import { resolveServerPort } from './config.js';
 import { memoiseByCorpus } from './corpus-memo.js';
 import { resolveDbPath } from './db/open.js';
+import { localReadFailureReason } from './db/provider-fanout.js';
 import { recordRouteObservation } from './db/route-observation-store.js';
 import {
   dbReadsEnabled,
@@ -151,6 +155,17 @@ import { resolveSessionFile, resolveSessionsDir } from './sessions.js';
 import { resolveSettingsPath } from './settings.js';
 import { resolveSystemPromptPath } from './system-prompt.js';
 import { resolveUsageLimits } from './usage-config.js';
+
+/**
+ * The one provider this process serves, and the only store it opens.
+ *
+ * A constant rather than configuration: this is claude's server, its sole store is
+ * claude's, and `docs/adrs/0046-narrowly-scoped-local-writes.md` makes that store's sole
+ * controller a property of the process rather than of a setting someone could point
+ * elsewhere. A sibling provider is reached through its own server on its own origin
+ * (`docs/adrs/0062-three-servers-and-one-moved-port.md`), never by re-pointing this one.
+ */
+const SERVED_PROVIDER = 'anthropic' as const;
 
 const PORT = resolveServerPort();
 const HOST = process.env.HOST ?? '127.0.0.1'; // localhost-only by default
@@ -2044,6 +2059,21 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // The provider scope gate. A route belonging to another provider is **421 Misdirected
+  // Request**, not 404: the path exists, this is simply not the server that may answer it
+  // — and saying so is what lets the dashboard's fan-out tell a wrong origin apart from a
+  // route that was never declared. This is the point at which "reads exactly one store"
+  // stops being a convention each handler is trusted to keep: a handler for another
+  // provider's store is unreachable through the dispatcher whatever it does internally.
+  if (!apiRouteServedBy(route, SERVED_PROVIDER)) {
+    send(res, MISDIRECTED_PROVIDER_STATUS, {
+      error: `${url.pathname} is scoped to ${route.provider}; this server serves ${SERVED_PROVIDER}`,
+      provider: route.provider,
+      servedProvider: SERVED_PROVIDER,
+    });
+    return;
+  }
+
   // Declared routes only, and past every earlier gate: the OPTIONS preflight, the 405 and
   // the 404 all answered above, and none of them is route work.
   res.on('finish', () => observeServedRoute(route.path, res, startedAt));
@@ -2051,14 +2081,30 @@ const server = http.createServer(async (req, res) => {
   try {
     await HANDLERS[route.path]({ req, res, url, date: parseDate(url.searchParams.get('date')) });
   } catch (err) {
-    send(res, 500, { error: errorMessage(err) });
+    // A provider-scoped route that threw failed to read this provider's store, so it
+    // answers with the *typed* reason beside the message. That is what lets the
+    // dashboard's fan-out say "ox's store is corrupt" rather than "something went wrong
+    // somewhere", and it is the half of ADR 0062's unreachable/unreadable distinction
+    // that only the server can supply — the client can see that a request failed, but
+    // not why the store behind it did. An agnostic route reads no provider corpus, so it
+    // has no such reason to give and keeps the plain error it always had.
+    send(
+      res,
+      500,
+      route.provider === 'agnostic'
+        ? { error: errorMessage(err) }
+        : { error: errorMessage(err), unavailableReason: localReadFailureReason(route.provider, err) },
+    );
   }
 });
 
 server.listen(PORT, HOST, async () => {
   console.log(`[claude-proxy-server] listening on http://${HOST}:${PORT}`);
   console.log(`[claude-proxy-server] reading audit logs from ${LOG_DIR}`);
-  console.log(`[claude-proxy-server] serving ${API_ROUTES.length} routes declared in @agent-proxy/claude-core`);
+  console.log(
+    `[claude-proxy-server] serving ${apiRoutesFor(SERVED_PROVIDER).length} of ${API_ROUTES.length} routes` +
+      ` declared in @agent-proxy/claude-core — the ${SERVED_PROVIDER} store and the provider-agnostic ledgers`,
+  );
   // The SQLite view of those logs, kept current by a watcher, and what the
   // routes read. Report which side is serving — a substrate that failed to open
   // falls back silently otherwise.
