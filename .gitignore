@@ -19,3 +19,5 @@ tmp/*
 # Project skills are tracked under `.agents/skills/`; `.claude/skills/` only surfaces
 # them for Claude Code, and is rebuilt per checkout by scripts/link-project-skills.sh.
 .claude/skills/
+# net stack's local sample database, anchored at stacks/net/data per ADR 0054
+stacks/net/data/

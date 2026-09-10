@@ -11,6 +11,12 @@ campaign absorbed them, each still its own set of packages under `stacks/<name>/
 | claude | `stacks/claude/` | `proxy`, `server`, `core`, `admin` | Anthropic / Claude Code |
 | codex | `stacks/codex/` | `proxy`, `server`, `packages/core`, `apps/admin` | OpenAI |
 | ox-alpha | `stacks/ox-alpha/` | `proxy`, `server`, `packages/core`, `apps/admin` | OpenAI Responses |
+| net | `stacks/net/` | `server` | Internet wire-byte spend over its own SQLite corpus; proxies nothing |
+
+The net stack's hourly collector is a timer inside its server process, not a second
+process — a LaunchAgent or any always-on machine-side component is deliberately out of
+scope ([decision internet-spend 005](docs/adrs/0072-collector-residency.md)),
+so data exists only while net-server runs.
 
 Every package is scoped `@agent-proxy/<stack>-<package>` — `@agent-proxy/claude-server`,
 `@agent-proxy/codex-proxy`, `@agent-proxy/ox-core`. Bins are untouched by that scoping.
@@ -134,9 +140,24 @@ makes that one overridable without moving a default.
 
 - Verify with `my-command-tools verify`; it discovers and runs the root `typecheck`,
   `test`, `build`, `check`, `lint`, `check:env` and `check:names` scripts. `check` is
-  Biome (`biome check .` — lint plus format plus import sorting, read-only) plus
-  `scripts/check-package-filters.mjs`; `format` (`biome check --write .`) is the fixer and
-  `lint` (`biome lint .`) narrows to the linter alone. `anti:slop` is oxlint.
+  Biome (`biome check .` — lint plus format plus import sorting, read-only) plus three
+  node gates — `scripts/check-package-filters.mjs`, `scripts/check-docs.mjs` and
+  `scripts/check-css-flow-spacing.mjs`, reachable alone as `check:names`, `check:docs` and
+  `check:css`; `format` (`biome check --write .`) is the fixer and `lint`
+  (`biome lint .`) narrows to the linter alone. `anti:slop` is oxlint.
+- **`check:css` guards one CSS invariant, and it exists because breaking it is silent.**
+  In claude's admin sheet the gap between the page-level blocks a route composes from —
+  `.grid` and `.card` — must ride the **earlier** sibling
+  (`.grid:has(+ .card) { margin-bottom: … }`), never a `margin-top` on the later one. That
+  spacing lives in `@layer layout`, `styles.css` declares `components` after `layout`, and
+  a component sheet's `margin` shorthand written for its bottom value alone resets the top
+  one on the way past — which is how `.usage-note`'s `margin: 0 0 var(--space-10)` left the
+  Overview's internet-spend card flush against the usage meters with nothing failing or
+  warning. No component sheet styles `.grid`, so on the earlier sibling the gap cannot be
+  cancelled from there. The gate is scoped to claude's sheet on purpose: codex's
+  `layout/card.css` is a mirror fusion carried in, and rewriting its spacing is the visual
+  change ADR 0050's boundary forbids. Same-class runs like `.nav-group + .nav-group` are
+  outside the rule — their subject is neither class, and no component sheet touches them.
 - Biome is configured by `biome.json` at the repo root, pinned to **2.5.6**. Two things
   there are deliberate and should not be "tidied" away:
   - The `files.includes` entry `!**/logs` prunes the log directories. They hold captured
@@ -272,12 +293,20 @@ makes that one overridable without moving a default.
 ## Running everything
 
 `pnpm zellij` opens one stack's proxy, server and admin in a single zellij session, plus a
-spare shell tab. **All three layouts live in the root `.zellij/`** — `claude-proxy.kdl`,
-`codex-proxy.kdl`, `ox-alpha-proxy.kdl` — because each stack's `scripts/zellij.sh` resolves
-the repository top level and `cd`s there before asking for `.zellij/<stack>.kdl`, which
-after fusion is the monorepo root. The two sibling layouts pin `cwd` per pane so a bare
-`pnpm proxy` reaches that stack's script rather than the root one, which is claude's. See
-`.zellij/README.md`.
+spare shell tab. **All four layouts live in the root `.zellij/`** — `claude-proxy.kdl`,
+`codex-proxy.kdl`, `ox-alpha-proxy.kdl`, `net-server.kdl` — because each stack's
+`scripts/zellij.sh` resolves the repository top level and `cd`s there before asking for
+`.zellij/<stack>.kdl`, which after fusion is the monorepo root. The two sibling layouts pin
+`cwd` per pane so a bare `pnpm proxy` reaches that stack's script rather than the root one,
+which is claude's. See `.zellij/README.md`.
+
+**claude's layout opens a fourth pane, net's server, and it is the one cross-stack pane in
+any layout.** claude's admin is net-server's only reader — the Overview's internet-spend
+card and the `/internet` page fetch it at `8531` — so without it the card renders
+"net-server unreachable", and since the hourly collector is a timer inside that process
+(ADR 0072), the hours it was down are missing from the corpus for good. The pane pins
+`cwd "stacks/net"` for the same reason the sibling layouts do: at the monorepo root a bare
+`pnpm server` is claude's. `net-server.kdl` is unchanged and still opens net alone.
 
 Individually, from a stack directory: `pnpm proxy`, `pnpm server`, `pnpm admin`.
 
@@ -409,14 +438,34 @@ them are one of the shapes below. Each has a working form; use it the first time
   `.claude/skills/`. Fix it once with `bash scripts/bootstrap-worktree.sh` (run from
   inside the worktree; it symlinks env files and `logs/` from the main checkout,
   rebuilds `.claude/skills/`, sets `blame.ignoreRevsFile`, then runs
-  `pnpm install --frozen-lockfile`). **Its env link list now names the post-relocation
-  paths `stacks/claude/admin/.env` and `stacks/claude/proxy/.env`**; until ticket 23 it
-  still named the pre-fusion `apps/admin/.env` and `proxy/.env`, which had linked nothing
-  since the stack moved. That failure was silent by construction — the script skips a
-  source it cannot find and says only `skip … (not in main checkout)` — so read its
-  output rather than assuming env arrived. It links no `stacks/claude/server/.env`, and
-  never has: that gap predates fusion, so under ADR 0050's boundary it is pre-existing
-  awkwardness rather than a fusion-caused regression, and it is left alone deliberately.
+  `pnpm install --frozen-lockfile`). **Its env link list names four files,
+  `stacks/claude/admin/.env`, `stacks/claude/proxy/.env`, `stacks/claude/server/.env` and
+  `services/concepts/.env`, and each one carries its pre-fusion path as a fallback.**
+  Ticket 23 moved the list to the post-relocation paths after the pre-fusion ones had
+  linked nothing since the stack moved. The fallback exists because that move is only
+  half of it. These files are gitignored, and **updating a checkout past the relocation
+  does not move an ignored file**, so a device that predates fusion still holds them at
+  `apps/admin/`, `proxy/` and `server/`. Naming only the new path linked nothing there
+  either. The script tries the new path, falls back to the old one, and says which it
+  used (`link … (pre-fusion path)`). Drop the fallbacks once every device has moved its
+  env files. A source found at neither path is still skipped silently by construction,
+  since `skip … (not in main checkout)` is the whole report, so read the output rather
+  than assuming env arrived. The server and concepts entries are new. Both processes
+  start with `--env-file-if-exists=.env`, so an unlinked worktree ran them on defaults
+  rather than failing, which is the quiet kind of wrong. That gap predated fusion and was
+  left alone during it under ADR 0050's boundary. Closing it now is a post-campaign
+  change, not a fusion one.
+- **`scripts/bootstrap-worktree.sh --print-verify-contract` prints `{boot, health,
+  routes}` as JSON and does nothing else.** No install, no symlinks, no codegen. It is
+  handled ahead of the main-checkout guard, so it answers from the main checkout and from
+  outside a repository too, which is where `/verify` asks from. `boot` is
+  `scripts/dev-boot.sh`. That script starts claude's server, polls `/api/health` until it
+  answers, then starts Vite and holds the foreground until both exit, taking its children
+  down with it on any signal. That ordering is what lets `health` name one URL, since
+  `http://127.0.0.1:5173/` answering implies the API behind it already does. `routes`
+  maps claude's source paths only, so a diff confined to a sibling stack or to a proxy
+  this does not launch matches nothing and lets a verification round skip itself. There
+  is no `login`, because the server binds 127.0.0.1 and the dashboard has no auth.
 - **Never wait on a core package build — there isn't one for any stack.** Each core's
   `exports` map points at `./src/index.ts`, none has a `build` script, and nothing in
   the repo references a `dist`. `No such file or directory` for a core `dist` is the

@@ -10,8 +10,8 @@ scope: all
 # Wayfinder — Provider Seam
 
 **Slug:** `provider-seam`
-**Integration branch:** `the-great-merge` (cut from it, merged back into it; the planning and campaign pull requests target it — resolved from `--integration`, not the repository default)
-**Base branch:** `wayfinder/provider-seam` (cut from the integration branch above; every ticket targets it)
+**Integration branch:** `main` (the campaign pull request targets it)
+**Base branch:** `wayfinder/provider-seam` (every ticket targets it)
 **Unattended:** `yes` (fixed at start by whether `--unattended` was typed there; `yes` means the kickoff prompt resumes this campaign unattended)
 **Plans directory:** `docs/wayfinder`
 **Started:** 2026-08-25
@@ -87,7 +87,15 @@ A ticket that follows the original brief instead of the correction will do the w
    block of `stacks/claude/server/src/db/open.ts`, and the comment above it records why it
    is deliberately not `skim_text IS NOT NULL`. An earlier pass wrongly concluded it did
    not exist by grepping for a *table* of that name.
-5. **The claude/ox port collision changes category.** It was pre-existing awkwardness only
+5. **The integration branch this campaign was cut from no longer exists.** `the-great-merge`
+   was deleted at origin once PR #295 landed the fusion campaign on `main` — as a squash, so
+   none of this campaign's own commits are ancestors of `main` either. The header above now
+   names `main`, and `wayfinder/provider-seam` was resynced with it on 2026-09-10, 225
+   commits behind at the time. Two conflict classes are worth knowing before the next
+   resync: ox's ports resolve to **this campaign's** side (`8808`, ADR 0062), and claude's
+   admin CSS resolves to **main's** side, because `scripts/check-css-flow-spacing.mjs`
+   arrived on main and fails the older `margin-top` form.
+6. **The claude/ox port collision changes category.** It was pre-existing awkwardness only
    while nothing required both servers up at once; ADR 0041's picker requires exactly that.
    See ADR 0062.
 
@@ -128,7 +136,6 @@ Taken before charting; re-measure rather than trusting these if a ticket turns o
 
 | # | Task | Plan | Branch | Status | Note |
 |---|------|------|--------|--------|------|
-| 02 | sidecar-v2-provider-discriminator | [provider-seam-02-sidecar-v2-provider-discriminator](provider-seam-02-sidecar-v2-provider-discriminator.md) | `task/provider-seam-02-sidecar-v2-provider-discriminator` | in-progress | |
 | 03 | claude-migration-23 | [provider-seam-03-claude-migration-23](provider-seam-03-claude-migration-23.md) | `task/provider-seam-03-claude-migration-23` | todo | |
 | 04 | codex-store-repair-and-migration | [provider-seam-04-codex-store-repair-and-migration](provider-seam-04-codex-store-repair-and-migration.md) | `task/provider-seam-04-codex-store-repair-and-migration` | todo | |
 | 05 | ox-store-repair-and-migration | [provider-seam-05-ox-store-repair-and-migration](provider-seam-05-ox-store-repair-and-migration.md) | `task/provider-seam-05-ox-store-repair-and-migration` | todo | |
@@ -225,6 +232,40 @@ A gate is a commit on `wayfinder/provider-seam` with a green verify and an hones
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 02 — sidecar-v2-provider-discriminator · 2026-08-25 · [#298](https://github.com/llevasseur/claude-proxy/pull/298)
+
+Sidecar v2 landed as a five-key provenance header — `schemaVersion`, `provider`, `harness`,
+`model`, `adapterVersion` — defined in `stacks/claude/core/src/sidecar.ts` and written by
+`stacks/claude/proxy/proxy.ts` on every `.audit.json`.
+
+**The version is read from `schemaVersion` alone, and the absence of that field is defined
+once to mean v1.** That is what satisfies "without guessing from which keys are present":
+a payload wearing every v2 key but no `schemaVersion` still reads as v1, and a test pins
+it. An unrecognised version throws rather than falling back, so a file from a future writer
+is never read as an older one.
+
+**Two review findings sat on the module's own headline claims, and both were real.** The
+sanitizer matched keys exactly and case-sensitively, so `x-api-key` — the header this proxy
+authenticates Anthropic with — passed straight through, along with `set-cookie` and the
+canonical `Authorization`/`Cookie` casings, even though the list already carried their
+lowercase forms. Keys are now folded to lowercase with `-`/`_` stripped on both sides.
+Separately, a payload with no `schemaVersion` but with v2's other discriminators present
+took the v1 branch and silently resolved a stated `openai` to the capturing adapter's
+`anthropic` — the exact misattribution the v2 path refuses loudly. It is now refused on
+both paths, as a consistency check on the result rather than a second version signal.
+
+**The proxy writes the header as literals rather than importing the ids, and that was
+forced.** `stacks/claude/proxy` declares no `dependencies` and is executed straight by node,
+so importing claude-core's barrel would pull forty modules into its runtime. What crosses
+the seam is data — three strings and a number — validated on the way back in by
+`readSidecar`. The drift guard that was missing is now there: both sides assert the exact
+adapter version, so a bump fails in two places and forces one diff.
+
+**Deliberate follow-up, not done here.** The sanitizer is still never exercised against the
+proxy's *real* output — the core round-trip test uses a hand-built body. Closing it needs a
+test in `stacks/claude/server`, which can import core where the proxy cannot, so it was left
+outside this ticket's lane rather than widening the diff.
 
 ### 19 — ox-8788-stragglers · 2026-08-25 · [#299](https://github.com/llevasseur/claude-proxy/pull/299)
 

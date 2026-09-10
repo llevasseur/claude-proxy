@@ -7,6 +7,7 @@ import {
   deriveSessionNodes,
   deriveSessionPreview,
   firstUserText,
+  interruptedSpawnResumed,
   interruptionKind,
   isAgentSpawn,
   isSameStep,
@@ -507,6 +508,59 @@ describe('interruptions', () => {
     expect(merged[1]?.tool).toBe('Bash(command=npm test --silent)'); // text expanded from the request
     expect(merged[1]?.interrupted).toBe(true); // but the stop, which only the transcript saw, survives
     expect(merged[2]?.interruption).toBe('stopped');
+  });
+});
+
+describe('interruptedSpawnResumed', () => {
+  const parent = (lines: string[]) => parseSessionNodes(['## Task: Ship it', ...lines].join('\n'));
+  const child = (lines: string[]) => parseSessionNodes(['## Task: dig in', ...lines].join('\n'));
+
+  it('reads steps past the cut in the subagent thread as a restart', () => {
+    const nodes = parent(['- Agent(subagent_type=Explore, prompt=look around)', '- interrupted: user']);
+    const childNodes = child(['- Read(file_path=/auth.ts)', '- interrupted: user', '- Bash(command=npm test)']);
+
+    expect(nodes[1]?.interrupted).toBe(true);
+    expect(interruptedSpawnResumed(nodes, 1, childNodes)).toBe(true);
+  });
+
+  it('reads a later same-type spawn in the parent as a restart', () => {
+    const nodes = parent([
+      '- Agent(subagent_type=Explore, prompt=look around)',
+      '- interrupted: user',
+      '- Agent(subagent_type=Explore, prompt=look again)',
+    ]);
+
+    expect(interruptedSpawnResumed(nodes, 1, null)).toBe(true);
+  });
+
+  it('keeps the cut final when the child stayed dead and no same-type spawn followed', () => {
+    const nodes = parent([
+      '- Agent(subagent_type=Explore, prompt=look around)',
+      '- interrupted: user',
+      '- done: gave up',
+    ]);
+    const childNodes = child(['- Read(file_path=/auth.ts)', '- interrupted: user']);
+
+    // The child's own stop is its last line — nothing was appended past it.
+    expect(childNodes.some((n) => n.interruption !== null)).toBe(false);
+    expect(interruptedSpawnResumed(nodes, 1, childNodes)).toBe(false);
+    expect(interruptedSpawnResumed(nodes, 1, null)).toBe(false);
+  });
+
+  it('ignores a later spawn of a different kind', () => {
+    const nodes = parent([
+      '- Agent(subagent_type=Explore, prompt=look around)',
+      '- interrupted: user',
+      '- Agent(subagent_type=Plan, prompt=new plan)',
+    ]);
+
+    expect(interruptedSpawnResumed(nodes, 1, null)).toBe(false);
+  });
+
+  it('answers false for a step that was not cut off', () => {
+    const nodes = parent(['- Agent(subagent_type=Explore, prompt=look around)', '- Bash(command=npm test)']);
+
+    expect(interruptedSpawnResumed(nodes, 0, null)).toBe(false);
   });
 });
 

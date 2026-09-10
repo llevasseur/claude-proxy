@@ -1,5 +1,6 @@
 export * from './adapter-seam.js';
 export * from './advice.js';
+export * from './alive-view.js';
 export * from './api-routes.js';
 export * from './capabilities.js';
 export * from './cli-args.js';
@@ -28,6 +29,7 @@ export * from './provenance.js';
 export * from './provider-adapter.js';
 export * from './pull-requests.js';
 export * from './sessions.js';
+export * from './sidecar.js';
 export * from './skim.js';
 export * from './suggestion-status.js';
 export * from './suggestions.js';

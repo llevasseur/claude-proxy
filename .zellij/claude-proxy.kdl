@@ -29,6 +29,21 @@ layout {
                     command "pnpm"
                     args "admin"
                 }
+                // net's server, in claude's session because claude's admin is its only
+                // reader — the Overview's internet-spend card and the `/internet` page
+                // fetch it at 8531 — and the hourly collector lives inside this same
+                // process (decision internet-spend 005), so hours it is down stay
+                // missing. The one cross-stack pane in any layout;
+                // `.zellij/net-server.kdl` still opens net alone.
+                //
+                // `cwd` as in the sibling layouts: this layout launches from the
+                // monorepo root, where a bare `pnpm server` is claude's script. No port
+                // pinned — net-server resolves its own default 8531.
+                pane name="net-server" {
+                    cwd "stacks/net"
+                    command "pnpm"
+                    args "server"
+                }
             }
         }
     }

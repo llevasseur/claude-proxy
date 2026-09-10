@@ -1,5 +1,5 @@
 import type { InterruptionKind, SessionNode } from '@agent-proxy/claude-core';
-import { spawnAgentType } from '@agent-proxy/claude-core';
+import { interruptedSpawnResumed, spawnAgentType } from '@agent-proxy/claude-core';
 import type { SessionGraphEntry } from './api';
 import type { BuiltGrain } from './graph-grains';
 
@@ -102,6 +102,8 @@ export interface Box {
   h: number;
   entry: SessionGraphEntry;
   node: SessionNode | null;
+  /** True on a spawn step cut off yet observably restarted — its severed styling is dropped. */
+  resumed: boolean;
 }
 
 /**
@@ -157,6 +159,8 @@ export interface Trail {
   kind: InterruptionKind;
   /** What the run was redirected to — the resuming step's own text. */
   label: string;
+  /** True when the spawn cut off ahead of this trail observably restarted. */
+  resumed: boolean;
 }
 
 /** Subagents indexed by the step that spawned them: parent thread id → spawn index → child. */
@@ -274,6 +278,23 @@ function runsOf(nodes: SessionNode[]): SessionNode[][] {
 }
 
 /**
+ * Node indexes of this transcript's spawn steps that were cut off yet observably
+ * restarted — the subagent's own stream picked back up, or a later spawn of the same
+ * kind took the work over. Their severed styling is dropped and their trail reads as
+ * resumed rather than dead.
+ */
+function resumedSpawns(entry: SessionGraphEntry, index: ChildIndex): Set<number> {
+  const children = index.get(entry.threadId);
+  const set = new Set<number>();
+  for (const node of entry.nodes) {
+    if (!node.interrupted) continue;
+    const child = children?.get(node.index);
+    if (interruptedSpawnResumed(entry.nodes, node.index, child?.nodes ?? null)) set.add(node.index);
+  }
+  return set;
+}
+
+/**
  * Snake one run of boxes from (`x0`, `y0`), folding every `cols` boxes. The fold's own rows
  * are laid first and reserve no room for branches; every subagent this run spawned is then
  * measured at the origin and moved into the leftmost column to the right of the fold that is
@@ -291,6 +312,7 @@ function layoutRun(
   runKey: string,
   size: Sizes,
   grain: BuiltGrain,
+  restarted: Set<number>,
 ): Placed {
   const spawned = index.get(entry.threadId);
 
@@ -323,6 +345,7 @@ function layoutRun(
         h,
         entry,
         node: it.node,
+        resumed: it.node !== null && restarted.has(it.node.index),
       });
       right = Math.max(right, cellX + size.cellW);
     }
@@ -428,12 +451,13 @@ function layoutTree(
   grain: BuiltGrain,
 ): Placed {
   const runs = runsOf(grain.project(entry));
+  const restarted = resumedSpawns(entry, index);
   const head: Item[] = [
     { kind: depth === 0 ? 'root' : 'agent', node: null },
     ...runs[0]!.map((node) => ({ kind: 'node' as const, node })),
   ];
 
-  const placed = layoutRun(entry, head, cols, x0, y0, index, depth, `${entry.threadId}:0`, size, grain);
+  const placed = layoutRun(entry, head, cols, x0, y0, index, depth, `${entry.threadId}:0`, size, grain, restarted);
   const boxes = [...placed.boxes];
   const edges = [...placed.edges];
   const bands = [...placed.bands];
@@ -457,8 +481,10 @@ function layoutTree(
       `${entry.threadId}:${r}`,
       size,
       grain,
+      restarted,
     );
     const trailRight = inner.right + BAND_PAD;
+    const resumed = restarted.has(opener.index - 1);
     trails.push({
       key: `t:${entry.threadId}:${opener.index}`,
       x: trailX,
@@ -468,6 +494,7 @@ function layoutTree(
       entry,
       kind: opener.interruption ?? 'user',
       label: nodeLabel(opener),
+      resumed,
     });
     trails.push(...inner.trails);
     bands.push(...inner.bands);
@@ -475,14 +502,15 @@ function layoutTree(
     edges.push(...inner.edges);
 
     // The cut itself: off the step the interruption landed on, into the trail's first step.
+    // A cut whose spawn observably restarted is a handoff, not a severance — draw no edge.
     const severed = boxes.find((b) => b.node?.index === opener.index - 1 && b.entry.threadId === entry.threadId);
-    const resumed = inner.boxes.find((b) => b.node?.index === opener.index);
-    if (severed && resumed) {
+    const resumedBox = inner.boxes.find((b) => b.node?.index === opener.index);
+    if (severed && resumedBox && !resumed) {
       edges.push({
         key: `sv:${entry.threadId}:${opener.index}`,
         kind: 'sever',
         color: color('cut'),
-        ...boxEdge(severed, resumed),
+        ...boxEdge(severed, resumedBox),
       });
     }
 

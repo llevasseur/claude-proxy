@@ -8,12 +8,40 @@
 #
 # The main checkout comes from `git rev-parse --git-common-dir` — the shared `.git`
 # whichever worktree asks — so no path is hardcoded and no branch or base is
-# assumed. Nothing is generated: `@claude-proxy/core` is consumed as TypeScript
-# source, so install is the whole build.
+# assumed. Nothing is generated: every core is consumed as TypeScript source, so
+# install is the whole build.
 #
-# Usage: bash scripts/bootstrap-worktree.sh   (from anywhere inside the worktree)
+# Usage: bash scripts/bootstrap-worktree.sh            (from anywhere inside the worktree)
+#        bash scripts/bootstrap-worktree.sh --print-verify-contract
 
 set -euo pipefail
+
+# The contract, ahead of the guard below: `/verify` asks it from wherever it stands,
+# often the main checkout with no worktree in play. Installs nothing, links nothing.
+# `boot` brings up claude's stack alone, server first and admin behind it, so :5173
+# answering means :8788 already did. `routes` names claude's paths only, so a diff
+# confined to a sibling stack matches nothing and the round skips itself. No `login`:
+# the server binds 127.0.0.1 and the dashboard has no auth.
+if [ "${1:-}" = "--print-verify-contract" ]; then
+  cat <<'JSON'
+{
+  "boot": "bash scripts/dev-boot.sh",
+  "health": "http://127.0.0.1:5173/",
+  "routes": {
+    "stacks/claude/admin/src/routes/overview.tsx": "/",
+    "stacks/claude/admin/src/routes/session*.tsx": "/sessions",
+    "stacks/claude/admin/src/routes/trend*.tsx": "/trends",
+    "stacks/claude/admin/src/routes/advice.tsx": "/advice",
+    "stacks/claude/admin/src/routes/idea*.tsx": "/ideas",
+    "stacks/claude/admin/src/routes/internet.tsx": "/internet",
+    "stacks/claude/admin/src/**": "/",
+    "stacks/claude/server/src/**": "/",
+    "stacks/claude/core/src/**": "/"
+  }
+}
+JSON
+  exit 0
+fi
 
 WORKTREE_ROOT="$(git rev-parse --show-toplevel)"
 GIT_COMMON_DIR="$(cd "${WORKTREE_ROOT}" && cd "$(git rev-parse --git-common-dir)" && pwd)"
@@ -26,14 +54,23 @@ if [ "${MAIN_CHECKOUT}" = "${WORKTREE_ROOT}" ]; then
   exit 1
 fi
 
-# Link one path, relative to both roots. Missing upstream is skipped; a path the
-# worktree already has wins.
+# Link one path into the worktree. The first argument is the destination and the first
+# source to try; any further arguments are older locations to fall back to. Missing
+# upstream is skipped; a path the worktree already has wins.
 link_from_main() {
   local rel="$1"
-  local src="${MAIN_CHECKOUT}/${rel}"
+  shift
   local dst="${WORKTREE_ROOT}/${rel}"
+  local candidate src=""
 
-  if [ ! -e "${src}" ]; then
+  for candidate in "${rel}" "$@"; do
+    if [ -e "${MAIN_CHECKOUT}/${candidate}" ]; then
+      src="${MAIN_CHECKOUT}/${candidate}"
+      break
+    fi
+  done
+
+  if [ -z "${src}" ]; then
     echo "  skip    ${rel} (not in main checkout)"
     return 0
   fi
@@ -44,23 +81,31 @@ link_from_main() {
 
   mkdir -p "$(dirname "${dst}")"
   ln -s "${src}" "${dst}"
-  echo "  link    ${rel} -> ${src}"
+  if [ "${src}" = "${MAIN_CHECKOUT}/${rel}" ]; then
+    echo "  link    ${rel} -> ${src}"
+  else
+    echo "  link    ${rel} -> ${src} (pre-fusion path)"
+  fi
 }
 
 echo "bootstrapping $(basename "${WORKTREE_ROOT}") from ${MAIN_CHECKOUT}"
 
-# Vite loads `stacks/claude/admin/.env`; `stacks/claude/proxy/.env` records the device's
-# port and no code path reads it. Both moved under `stacks/claude/` with the relocation,
-# and this list kept the pre-fusion paths — which linked nothing, because `link_from_main`
-# skips a missing source and only says so. Tracked `.env.example` files arrive with the
-# worktree.
+# The server and the concepts service start with `--env-file-if-exists=.env`, so an
+# unlinked worktree runs them on defaults rather than failing. Tracked `.env.example`
+# files arrive with the worktree.
+#
+# The second argument is each file's pre-fusion path. These are gitignored, and updating
+# a checkout past the relocation does not move an ignored file, so a device that predates
+# fusion still holds them there. Drop the fallbacks once every device has moved them.
 echo "env:"
-link_from_main "stacks/claude/admin/.env"
-link_from_main "stacks/claude/proxy/.env"
+link_from_main "stacks/claude/admin/.env" "apps/admin/.env"
+link_from_main "stacks/claude/proxy/.env" "proxy/.env"
+link_from_main "stacks/claude/server/.env" "server/.env"
+link_from_main "services/concepts/.env"
 
-# `resolveLogDir()` (server/src/logs.ts) defaults to `<repo>/logs`, so an unlinked
-# worktree serves an empty dashboard and fails its health check. Linking keeps that
-# default correct for the server, the daily summary and `/revive`'s store at once.
+# `resolveLogDir()` (stacks/claude/server/src/logs.ts) defaults to `<repo>/logs`, so an
+# unlinked worktree serves an empty dashboard and fails its health check. Linking keeps
+# that default correct for the server, the daily summary and `/revive`'s store at once.
 echo "logs:"
 link_from_main "logs"
 

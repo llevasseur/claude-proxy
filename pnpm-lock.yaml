@@ -205,6 +205,18 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.20.1)(jsdom@26.1.0)
 
+  stacks/net/packages/server:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.2
+        version: 22.18.13
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+      vitest:
+        specifier: ~3.2.0
+        version: 3.2.7(@types/node@22.18.13)(jsdom@26.1.0)(tsx@4.23.1)
+
   stacks/ox-alpha/apps/admin:
     dependencies:
       '@agent-proxy/ox-core':
@@ -3419,21 +3431,29 @@ snapshots:
     optionalDependencies:
       vite: 5.4.21(@types/node@22.20.1)
 
-  '@vitest/mocker@3.2.7(vite@6.4.3(@types/node@22.18.13)(tsx@4.20.6))':
+  '@vitest/mocker@3.2.7(vite@7.1.12(@types/node@22.18.13)(tsx@4.20.6))':
     dependencies:
       '@vitest/spy': 3.2.7
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
-      vite: 6.4.3(@types/node@22.18.13)(tsx@4.20.6)
+      vite: 7.1.12(@types/node@22.18.13)(tsx@4.20.6)
 
-  '@vitest/mocker@3.2.7(vite@6.4.3(@types/node@22.20.1)(tsx@4.23.1))':
+  '@vitest/mocker@3.2.7(vite@7.1.12(@types/node@22.18.13)(tsx@4.23.1))':
     dependencies:
       '@vitest/spy': 3.2.7
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
-      vite: 6.4.3(@types/node@22.20.1)(tsx@4.23.1)
+      vite: 7.1.12(@types/node@22.18.13)(tsx@4.23.1)
+
+  '@vitest/mocker@3.2.7(vite@7.1.12(@types/node@22.20.1)(tsx@4.23.1))':
+    dependencies:
+      '@vitest/spy': 3.2.7
+      estree-walker: 3.0.3
+      magic-string: 0.30.21
+    optionalDependencies:
+      vite: 7.1.12(@types/node@22.20.1)(tsx@4.23.1)
 
   '@vitest/pretty-format@2.1.9':
     dependencies:
@@ -4157,7 +4177,28 @@ snapshots:
       debug: 4.4.3
       es-module-lexer: 1.7.0
       pathe: 2.0.3
-      vite: 6.4.3(@types/node@22.18.13)(tsx@4.20.6)
+      vite: 7.1.12(@types/node@22.18.13)(tsx@4.20.6)
+    transitivePeerDependencies:
+      - '@types/node'
+      - jiti
+      - less
+      - lightningcss
+      - sass
+      - sass-embedded
+      - stylus
+      - sugarss
+      - supports-color
+      - terser
+      - tsx
+      - yaml
+
+  vite-node@3.2.4(@types/node@22.18.13)(tsx@4.23.1):
+    dependencies:
+      cac: 6.7.14
+      debug: 4.4.3
+      es-module-lexer: 1.7.0
+      pathe: 2.0.3
+      vite: 7.1.12(@types/node@22.18.13)(tsx@4.23.1)
     transitivePeerDependencies:
       - '@types/node'
       - jiti
@@ -4178,7 +4219,7 @@ snapshots:
       debug: 4.4.3
       es-module-lexer: 1.7.0
       pathe: 2.0.3
-      vite: 6.4.3(@types/node@22.20.1)(tsx@4.23.1)
+      vite: 7.1.12(@types/node@22.20.1)(tsx@4.23.1)
     transitivePeerDependencies:
       - '@types/node'
       - jiti
@@ -4202,7 +4243,20 @@ snapshots:
       '@types/node': 22.20.1
       fsevents: 2.3.3
 
-  vite@6.4.3(@types/node@22.18.13)(tsx@4.20.6):
+  vite@6.4.3(@types/node@22.20.1)(tsx@4.23.1):
+    dependencies:
+      esbuild: 0.25.12
+      fdir: 6.5.0(picomatch@4.0.5)
+      picomatch: 4.0.5
+      postcss: 8.5.19
+      rollup: 4.62.2
+      tinyglobby: 0.2.17
+    optionalDependencies:
+      '@types/node': 22.20.1
+      fsevents: 2.3.3
+      tsx: 4.23.1
+
+  vite@7.1.12(@types/node@22.18.13)(tsx@4.20.6):
     dependencies:
       esbuild: 0.25.12
       fdir: 6.5.0(picomatch@4.0.5)
@@ -4215,7 +4269,7 @@ snapshots:
       fsevents: 2.3.3
       tsx: 4.20.6
 
-  vite@6.4.3(@types/node@22.20.1)(tsx@4.23.1):
+  vite@7.1.12(@types/node@22.18.13)(tsx@4.23.1):
     dependencies:
       esbuild: 0.25.12
       fdir: 6.5.0(picomatch@4.0.5)
@@ -4224,7 +4278,7 @@ snapshots:
       rollup: 4.62.2
       tinyglobby: 0.2.17
     optionalDependencies:
-      '@types/node': 22.20.1
+      '@types/node': 22.18.13
       fsevents: 2.3.3
       tsx: 4.23.1
 
@@ -4281,7 +4335,7 @@ snapshots:
     dependencies:
       '@types/chai': 5.2.3
       '@vitest/expect': 3.2.7
-      '@vitest/mocker': 3.2.7(vite@6.4.3(@types/node@22.18.13)(tsx@4.20.6))
+      '@vitest/mocker': 3.2.7(vite@7.1.12(@types/node@22.18.13)(tsx@4.20.6))
       '@vitest/pretty-format': 3.2.7
       '@vitest/runner': 3.2.7
       '@vitest/snapshot': 3.2.7
@@ -4299,8 +4353,50 @@ snapshots:
       tinyglobby: 0.2.17
       tinypool: 1.1.1
       tinyrainbow: 2.0.0
-      vite: 6.4.3(@types/node@22.18.13)(tsx@4.20.6)
+      vite: 7.1.12(@types/node@22.18.13)(tsx@4.20.6)
       vite-node: 3.2.4(@types/node@22.18.13)(tsx@4.20.6)
+      why-is-node-running: 2.3.0
+    optionalDependencies:
+      '@types/node': 22.18.13
+      jsdom: 26.1.0
+    transitivePeerDependencies:
+      - jiti
+      - less
+      - lightningcss
+      - msw
+      - sass
+      - sass-embedded
+      - stylus
+      - sugarss
+      - supports-color
+      - terser
+      - tsx
+      - yaml
+
+  vitest@3.2.7(@types/node@22.18.13)(jsdom@26.1.0)(tsx@4.23.1):
+    dependencies:
+      '@types/chai': 5.2.3
+      '@vitest/expect': 3.2.7
+      '@vitest/mocker': 3.2.7(vite@7.1.12(@types/node@22.18.13)(tsx@4.23.1))
+      '@vitest/pretty-format': 3.2.7
+      '@vitest/runner': 3.2.7
+      '@vitest/snapshot': 3.2.7
+      '@vitest/spy': 3.2.7
+      '@vitest/utils': 3.2.7
+      chai: 5.3.3
+      debug: 4.4.3
+      expect-type: 1.4.0
+      magic-string: 0.30.21
+      pathe: 2.0.3
+      picomatch: 4.0.5
+      std-env: 3.10.0
+      tinybench: 2.9.0
+      tinyexec: 0.3.2
+      tinyglobby: 0.2.17
+      tinypool: 1.1.1
+      tinyrainbow: 2.0.0
+      vite: 7.1.12(@types/node@22.18.13)(tsx@4.23.1)
+      vite-node: 3.2.4(@types/node@22.18.13)(tsx@4.23.1)
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 22.18.13
@@ -4323,7 +4419,7 @@ snapshots:
     dependencies:
       '@types/chai': 5.2.3
       '@vitest/expect': 3.2.7
-      '@vitest/mocker': 3.2.7(vite@6.4.3(@types/node@22.20.1)(tsx@4.23.1))
+      '@vitest/mocker': 3.2.7(vite@7.1.12(@types/node@22.20.1)(tsx@4.23.1))
       '@vitest/pretty-format': 3.2.7
       '@vitest/runner': 3.2.7
       '@vitest/snapshot': 3.2.7
@@ -4341,7 +4437,7 @@ snapshots:
       tinyglobby: 0.2.17
       tinypool: 1.1.1
       tinyrainbow: 2.0.0
-      vite: 6.4.3(@types/node@22.20.1)(tsx@4.23.1)
+      vite: 7.1.12(@types/node@22.20.1)(tsx@4.23.1)
       vite-node: 3.2.4(@types/node@22.20.1)(tsx@4.23.1)
       why-is-node-running: 2.3.0
     optionalDependencies:

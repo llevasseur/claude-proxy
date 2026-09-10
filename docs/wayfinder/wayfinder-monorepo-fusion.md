@@ -19,7 +19,8 @@ scope: all
 
 > Ephemeral scaffolding, on a schedule. Every `monorepo-fusion-*.md` plan beside this file stays here for
 > the campaign's life — marked done once its task lands — so any task can be restarted from what
-> was asked. The final ticket `monorepo-fusion-zz` deletes them all; this map goes when the wayfinder
+> was asked. The final ticket `monorepo-fusion-zz` has now deleted them, all but ticket 09's,
+> which survives because 09 is still paused; this map goes when the wayfinder
 > closes. The durable output is the merged code and the repository's feature and spec docs.
 
 ## Scope
@@ -190,7 +191,14 @@ Noted, not yet ticketed into their own units; each is folded into the ticket nam
 | # | Task | Plan | Branch | Status | Note |
 |---|------|------|--------|--------|------|
 | 09 | migrate-corpora | [monorepo-fusion-09-migrate-corpora](monorepo-fusion-09-migrate-corpora.md) | `task/monorepo-fusion-09-migrate-corpora` | paused | Stopped before the `mv`, deliberately: all three corpora have live proxy+server writers with open WAL-mode SQLite connections, so the move risks the corpus and criterion 3 (before == after) is unassertable while claude gains ~21 files/45s. Needs a human to ratify ADR 0054, authorise quiescing the three stacks, and pick a byte measure (`du -sb` is GNU-only; this device has BSD `du`). Criterion 6 and the STACK_ROOT rename already satisfied by tickets 05/06. |
-| zz | retire-done-plans | [monorepo-fusion-zz-retire-done-plans](monorepo-fusion-zz-retire-done-plans.md) | `task/monorepo-fusion-zz-retire-done-plans` | todo | Final ticket — deletes every plan. Execute last. |
+
+> **The plan scaffolding is retired, except ticket 09's.** Ticket `zz` ran on `main` after
+> the campaign landed and deleted 25 of the 26 `monorepo-fusion-*.md` plans, its own
+> included. `monorepo-fusion-09-migrate-corpora.md` survives on purpose: 09 is paused, and
+> that plan is the only artifact it can be restarted from, so the row above stays actionable
+> and its link still resolves. See
+> [ADR 0066](../adrs/0066-retire-the-fusion-plans-after-the-campaign-landed.md) and
+> [ADR 0067](../adrs/0067-the-plan-retirement-preserves-the-paused-tickets-plan.md).
 
 <!--
 Status is exactly one of these six:
@@ -205,9 +213,9 @@ Status is exactly one of these six:
                   it from the plan.
 Note is required for blocked-limit, rejected, and redo; empty for the rest.
 
-The `zz` row is this campaign's final ticket. It always sorts last, it is executed
-after every other task, and it deletes every plan in this directory. Do not drop it:
-nothing else removes them, so without it they outlive the campaign permanently.
+The `zz` row is gone because `zz` has run. It sorted last, it executed after every other
+task, and it deleted every plan in this directory but ticket 09's. Do not re-add it, and
+do not read its absence as a dropped ticket: its Completed entry below is the record.
 -->
 
 ## Ordering
@@ -262,6 +270,45 @@ map. Every wave boundary above is one.
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### zz — retire-done-plans · 2026-08-27 · PR #318
+
+**Ran on `main`, after the campaign had already landed, and deleted 25 of the 26 plans
+rather than all 26.** Both departures from the plan as written are recorded as decisions
+rather than buried in a diff:
+[ADR 0066](../adrs/0066-retire-the-fusion-plans-after-the-campaign-landed.md) and
+[ADR 0067](../adrs/0067-the-plan-retirement-preserves-the-paused-tickets-plan.md), each
+flagged `needs-human`.
+
+**The base is `main` because the campaign's branches are gone.** PR #289 merged
+`wayfinder/monorepo-fusion` into `the-great-merge` and PR #295 merged that into `main`, so
+the plan residue this ticket removes sits on `main` and `the-great-merge` no longer exists
+on origin to target. The ticket therefore ran `--base main --into main` as a single
+merge-through run, and it is the one ticket of this campaign that never appeared in a
+campaign pull request. ADR 0066 says so plainly, because a reader reconstructing the
+campaign from pull requests alone will not find it.
+
+**Ticket 09's plan survives, and that carve-out is the whole point of running now.** ADR
+0059 rejected `zz` for exactly one reason — it "deletes the only artifact from which ticket
+09 can be restarted, converting a deliberate pause into a permanent loss of the plan." The
+human has since directed that `zz` run, so both things hold at once: the scaffolding goes,
+`monorepo-fusion-09-migrate-corpora.md` stays, and 09 remains resumable from it. The carve-
+out also keeps the docs gate green, since the Active-tasks row for 09 links that plan and
+`scripts/check-docs.mjs` fails an unresolved link. **09 was not resumed, unblocked or
+touched** — it still needs a human to ratify ADR 0054, authorise quiescing the three stacks,
+and pick a byte measure.
+
+**This map stays, with its `zz` row moved here and its `09` row untouched.** The three
+earlier campaigns' files in this directory — `map-proxy-skim.md`, `map-sqlite-substrate.md`,
+`map-internet-spend.md`, the `research-002-*`, `decision-004-*`, `decision-internet-spend-*`,
+`internet-spend-*` and `provider-seam-*` records, `wayfinder-provider-seam.md` and
+`tickets/` — were left alone, deleting another campaign's records being the exact error this
+ticket exists to prevent. `docs/wayfinder/index.md` was regenerated with `okq index`.
+
+**One consequence to name.** `docs/wayfinder/` now holds exactly one campaign plan and its
+map, which is a deliberate residue with a live owner rather than the ownerless kind ticket
+`zz` was written to clear. It is discharged when a human resolves ticket 09, at which point
+that plan and this map go together.
 
 ### 11 — repair-and-wire-docs-gate · 2026-08-24 · PR #287
 

@@ -733,6 +733,25 @@ export function isAgentSpawn(node: SessionNode): boolean {
   return spawnAgentType(node) !== null;
 }
 
+/**
+ * Whether a spawn the run was cut off at observably restarted: either its subagent's own
+ * transcript appended steps past the interruption (`childNodes`, null when no transcript
+ * was captured for that thread), or the parent went on to spawn another agent of the same
+ * kind. Neither seen, the cut reads as final.
+ */
+export function interruptedSpawnResumed(
+  nodes: readonly SessionNode[],
+  spawnIndex: number,
+  childNodes: readonly SessionNode[] | null,
+): boolean {
+  const spawn = nodes.find((n) => n.index === spawnIndex);
+  if (!spawn?.interrupted) return false;
+  const type = spawnAgentType(spawn);
+  if (type === null) return false;
+  if (childNodes?.some((n) => n.interruption !== null)) return true;
+  return nodes.some((n) => n.index > spawnIndex && spawnAgentType(n) === type);
+}
+
 /** The fields {@link linkAgentSessions} needs from a transcript. */
 export interface LinkableSession {
   threadId: string;

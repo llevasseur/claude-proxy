@@ -111,7 +111,7 @@ export const FALLBACK_REGISTRY: readonly FallbackEntry[] = [
   {
     id: 'agent-link-start-time-inference',
     file: 'core/src/sessions.ts',
-    line: 895,
+    line: 914,
     match: 'for (const family of families.values())',
     since: '2026-08-07',
     supersededBy: '0bbaec8',

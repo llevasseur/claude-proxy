@@ -12,6 +12,7 @@ Add one with `okq new feature "<title>"`.
 | Title | File |
 |-------|------|
 | Admin dashboard for claude-proxy usage | [admin-dashboard-for-claude-proxy-usage.md](admin-dashboard-for-claude-proxy-usage.md) |
+| Alive View | [alive-view.md](alive-view.md) |
 | Background jobs browser | [background-jobs-browser.md](background-jobs-browser.md) |
 | Capability gating on the two adapters | [capability-gating.md](capability-gating.md) |
 | Bike (codex) — live sanitized usage overview | [codex-bike.md](codex-bike.md) |
@@ -23,6 +24,7 @@ Add one with `okq new feature "<title>"`.
 | Dashboard chat sessions | [dashboard-chat-sessions.md](dashboard-chat-sessions.md) |
 | Device system prompt | [device-system-prompt.md](device-system-prompt.md) |
 | Ideas ledger | [ideas-ledger.md](ideas-ledger.md) |
+| Internet usage meter | [internet-usage-meter.md](internet-usage-meter.md) |
 | Live session graph | [live-session-graph.md](live-session-graph.md) |
 | Message drill-down | [message-drill-down.md](message-drill-down.md) |
 | Operator notes | [operator-notes.md](operator-notes.md) |
