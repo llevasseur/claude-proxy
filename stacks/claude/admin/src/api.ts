@@ -973,7 +973,7 @@ export interface ChatStopResponse {
  * the manifest's own GET paths: a declared route with no shape here does not compile,
  * and neither does a shape for a path the server does not serve.
  */
-interface ApiGetResponses extends Record<ApiJsonGetPath, unknown> {
+export interface ApiGetResponses extends Record<ApiJsonGetPath, unknown> {
   '/api/health': HealthResponse;
   '/api/summary': SummaryResponse;
   '/api/trends': TrendsResponse;
