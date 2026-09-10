@@ -1,11 +1,13 @@
-# Dev session layouts, and the nine ports
+# Dev session layouts, and the ports
 
-Three zellij layouts, one per stack, each opening that stack's proxy, server and admin
-in a `dev` tab plus a spare shell. Launch one with `pnpm zellij` from the stack whose
-session you want — the root script starts claude's, `stacks/codex` and
-`stacks/ox-alpha` start their own.
+Four zellij layouts, one per stack, each opening that stack's processes in a `dev` tab
+plus a spare shell. Launch one with `pnpm zellij` from the stack whose session you want —
+the root script starts claude's, `stacks/codex`, `stacks/ox-alpha` and `stacks/net` start
+their own. Claude opens proxy, server, admin **and net's server**; codex and ox each open
+proxy, server and admin; net opens only its own server, because it has one process — the
+collector lives inside it (decision internet-spend 005).
 
-All three layouts live here rather than under their stacks, and that move repaired
+All four layouts live here rather than under their stacks, and that move repaired
 something rather than tidying it. Each stack's `scripts/zellij.sh` resolves
 `git rev-parse --show-toplevel` and `cd`s there, which after fusion is the *monorepo*
 root, and then asks for `.zellij/<stack>.kdl` — a path that did not exist until these
@@ -13,11 +15,12 @@ files arrived. Both sibling launchers were broken on arrival and are not any mor
 
 | Layout | Launched by | Panes run from |
 |---|---|---|
-| [claude-proxy.kdl](claude-proxy.kdl) | `pnpm zellij` | the monorepo root |
+| [claude-proxy.kdl](claude-proxy.kdl) | `pnpm zellij` | the monorepo root, except the net pane's `cwd "stacks/net"` |
 | [codex-proxy.kdl](codex-proxy.kdl) | `stacks/codex` → `pnpm zellij` | `cwd "stacks/codex"` |
 | [ox-alpha-proxy.kdl](ox-alpha-proxy.kdl) | `stacks/ox-alpha` → `pnpm zellij` | `cwd "stacks/ox-alpha"` |
+| [net-server.kdl](net-server.kdl) | `stacks/net` → `pnpm zellij` | `cwd "stacks/net"` |
 
-The two sibling layouts pin `cwd` per pane because a bare `pnpm proxy` at the monorepo
+The sibling layouts pin `cwd` per pane because a bare `pnpm proxy` at the monorepo
 root resolves to the *root* script, which is claude's. `cwd` also keeps each script's
 own relative paths working — ox's proxy script is
 `node --env-file-if-exists=proxy/.env …`, resolved against the working directory, so
@@ -29,7 +32,19 @@ three: one session per stack is what makes `pnpm zellij` mean the same thing eve
 and a second layout for the same stack splits that stack's processes across two sessions
 nobody starts together.
 
-## The nine defaults
+**claude's layout carries one pane that is not claude's, and the reason is consumption
+rather than ownership.** claude's admin is the only reader net-server has — the Overview's
+internet-spend card and the `/internet` page both fetch it at `8531` — so a claude session
+without it shows "net-server unreachable" where the spend should be, and because the
+hourly collector is a timer inside that same process (decision internet-spend 005), the
+hours it was down stay missing from the corpus afterwards. Starting it beside the reader
+is what makes both go away. `net-server.kdl` still exists and still opens net alone: that
+is the session for working on the net stack, and it is the one to launch when claude's
+processes are not wanted. Neither layout is a second layout *for the same stack*, so the
+rule above is intact — a consumer pane crosses stacks, and the thing it forbids is
+splitting one stack's processes in two.
+
+## The defaults
 
 These are the ports the code actually binds today, read from source rather than from a
 specification. **Nothing here is a target to converge on: change no number.** ADR 0050
@@ -47,6 +62,7 @@ rest of 0050 governing, so the sentence above still holds for the other eight.
 | claude | 8787 | 8788 | 5173 |
 | codex | 8026 | 4319 | 5173 |
 | ox-alpha | 8807 | 8808 | 5173 |
+| net | — | 8531 | — |
 
 Which name each one reads, and where the default is written:
 
@@ -58,19 +74,27 @@ Which name each one reads, and where the default is written:
 | codex server | `CODEX_SERVER_PORT` | `PORT` | `stacks/codex/server/src/config.ts` |
 | ox proxy | `OX_PROXY_PORT` | `PROXY_PORT` | `stacks/ox-alpha/proxy/src/config.ts` |
 | ox server | `OX_SERVER_PORT` | `SERVER_PORT` | `stacks/ox-alpha/server/src/config.ts` |
+| net server | `NET_SERVER_PORT` | `PORT` | `stacks/net/packages/server/src/config.ts` |
 
 The three admin ports are Vite's, set in each stack's `vite.config.ts`: claude pins
 `5173` with `strictPort`, so it refuses to drift and fails loudly instead; codex sets
 `5173`; ox sets nothing and takes Vite's own default, which is `5173` too.
+
+net's server reads one more name: `NET_ALLOWED_ORIGINS`, a comma-separated list of
+origins allowed to `PUT /api/config`, defaulting to
+`http://localhost:5173,http://127.0.0.1:5173`; its GETs answer open CORS regardless.
+It also honors `NET_DB_PATH` for the database location — see
+`stacks/net/packages/server/src/db.ts`.
 
 **All six of ADR 0050's scoped names exist.** `CODEX_SERVER_PORT` (ticket 05),
 `OX_PROXY_PORT` and `OX_SERVER_PORT` (ticket 06) arrived with the absorption tickets, and
 ticket 22 added `CLAUDE_PROXY_PORT`, `CLAUDE_SERVER_PORT` and `CODEX_PROXY_PORT`. Each
 keeps its bare name as a fallback scoped to its own package, so a stack launched exactly
 as it is launched today resolves exactly as it did, and ADR 0050 now describes this
-repository rather than a state it had not reached. **Eight of the nine defaults are the
-ones fusion found**; ox's server is the one that moved, under ADR 0062, and it moved by
-changing the number rather than by leaning on the scoped name.
+repository rather than a state it had not reached. **Every default fusion found is still the
+number above but one**; ox's server is the one that moved, under ADR 0062, and it moved by
+changing the number rather than by leaning on the scoped name. net's `8531` arrived with
+the net stack afterwards and collided with nothing.
 
 **claude's proxy and server validate nothing, and that is the one asymmetry worth
 knowing.** Neither package had a config module at all before ticket 22: `Number()` of a

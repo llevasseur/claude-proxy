@@ -1,0 +1,12 @@
+{
+  "name": "net",
+  "private": true,
+  "packageManager": "pnpm@11.5.2",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "server": "pnpm --filter @agent-proxy/net-server start",
+    "zellij": "bash scripts/zellij.sh"
+  }
+}

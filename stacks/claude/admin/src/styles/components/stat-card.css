@@ -248,11 +248,13 @@
   .grid.usage {
     grid-template-columns: repeat(auto-fit, minmax(272px, 1fr));
   }
+  /* Type and tone only — spacing is the layout layer's. The `margin: 0 0 var(--space-10)`
+   * this used to carry zeroed the top margin a card stacked under a grid gets, and
+   * overrode `.grid > .card`'s zero inside a grid. */
   .usage-note {
     font-size: var(--text-4);
     line-height: 1.5;
     color: var(--muted);
-    margin: 0 0 var(--space-10);
   }
 
   /* stat card: mini chart + clickable drill-down + hover popover */

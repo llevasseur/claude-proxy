@@ -22,6 +22,7 @@ export function SessionsSidenav({
   activeId,
   isDrafting,
   onNewChat,
+  onSelect,
 }: {
   sessions: SessionSummary[];
   /** Thread id of the transcript being read, if the reader is on one. */
@@ -29,6 +30,11 @@ export function SessionsSidenav({
   /** True while the composer holds an unstarted chat. */
   isDrafting: boolean;
   onNewChat: () => void;
+  /**
+   * Row activation in place of navigation. Absent, rows link to the transcript page
+   * exactly as they always have; present, rows are buttons that hand over the thread id.
+   */
+  onSelect?: (threadId: string) => void;
 }) {
   const [filter, setFilter] = useState('');
   const { isResolved, activeAt, resolve, restore } = useResolvedSessions();
@@ -92,6 +98,7 @@ export function SessionsSidenav({
           filter={filter}
           empty={sessions.length === 0 ? 'No session transcripts yet.' : 'Nothing active.'}
           onToggle={resolve}
+          onSelect={onSelect}
           style={split === null ? undefined : { flex: 'none', height: `${split}px` }}
         />
 
@@ -119,6 +126,7 @@ export function SessionsSidenav({
           resolved
           empty='Nothing resolved yet.'
           onToggle={restore}
+          onSelect={onSelect}
           style={split === null ? { flex: '0 1 auto', maxHeight: '38%' } : undefined}
         />
       </div>
@@ -193,6 +201,7 @@ function SessionSection({
   resolved = false,
   empty,
   onToggle,
+  onSelect,
   style,
 }: {
   title: string;
@@ -203,6 +212,7 @@ function SessionSection({
   resolved?: boolean;
   empty: string;
   onToggle: (threadId: string) => void;
+  onSelect?: (threadId: string) => void;
   style?: React.CSSProperties;
 }) {
   const [shown, setShown] = useState(PAGE);
@@ -250,6 +260,7 @@ function SessionSection({
                 active={s.threadId === activeId}
                 resolved={resolved}
                 onToggle={onToggle}
+                onSelect={onSelect}
               />
             ))}
             {more && (
@@ -274,11 +285,13 @@ function SessionRow({
   active,
   resolved,
   onToggle,
+  onSelect,
 }: {
   session: SessionSummary;
   active: boolean;
   resolved: boolean;
   onToggle: (threadId: string) => void;
+  onSelect?: (threadId: string) => void;
 }) {
   const name = sessionName(session);
   // Not the raw prompt — a slash-command session's opens with `<command-message>`, which
@@ -286,25 +299,36 @@ function SessionRow({
   // is the second cut rather than the only one.
   const preview = sessionPreview(session);
   const label = resolved ? 'Move back to Active' : 'Resolve';
+  const body = (
+    <>
+      <div className='session-row-top'>
+        <span className='session-row-name'>{name ?? session.threadId}</span>
+        <span className='session-row-age'>{fmtAgeShort(session.modified)}</span>
+      </div>
+      {preview && <span className='session-row-preview'>{preview}</span>}
+      <div className='session-row-meta'>
+        {session.model && <span className='session-chip'>{session.model}</span>}
+        {session.tools > 0 && <span className='session-chip'>{fmtInt(session.tools)} tools</span>}
+        {session.errors > 0 && (
+          <span className='session-chip is-bad'>
+            <AlertTriangle size={11} strokeWidth={2} aria-hidden />
+            {fmtInt(session.errors)}
+          </span>
+        )}
+      </div>
+    </>
+  );
   return (
     <div className={`session-row${active ? ' is-active' : ''}`}>
-      <Link to='/sessions/$id' params={{ id: session.threadId }} className='session-row-link'>
-        <div className='session-row-top'>
-          <span className='session-row-name'>{name ?? session.threadId}</span>
-          <span className='session-row-age'>{fmtAgeShort(session.modified)}</span>
-        </div>
-        {preview && <span className='session-row-preview'>{preview}</span>}
-        <div className='session-row-meta'>
-          {session.model && <span className='session-chip'>{session.model}</span>}
-          {session.tools > 0 && <span className='session-chip'>{fmtInt(session.tools)} tools</span>}
-          {session.errors > 0 && (
-            <span className='session-chip is-bad'>
-              <AlertTriangle size={11} strokeWidth={2} aria-hidden />
-              {fmtInt(session.errors)}
-            </span>
-          )}
-        </div>
-      </Link>
+      {onSelect ? (
+        <button type='button' className='session-row-link' onClick={() => onSelect(session.threadId)}>
+          {body}
+        </button>
+      ) : (
+        <Link to='/sessions/$id' params={{ id: session.threadId }} className='session-row-link'>
+          {body}
+        </Link>
+      )}
       <button
         type='button'
         className='session-row-cta'

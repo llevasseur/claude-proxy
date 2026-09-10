@@ -113,6 +113,7 @@ import { snapshotChatStream, subscribeChatStream } from './chat-stream.js';
 import { type ReconcileResult, reconcileCommandRuns, resolveCommandsDir } from './command-runs.js';
 import { RemoteConceptStoreError, remoteConceptStore } from './concepts-remote.js';
 import { resolveServerPort } from './config.js';
+import { memoiseByCorpus } from './corpus-memo.js';
 import { resolveDbPath } from './db/open.js';
 import { recordRouteObservation } from './db/route-observation-store.js';
 import {
@@ -128,7 +129,7 @@ import { errorMessage } from './errors.js';
 import { IdeasStoreUnconfiguredError, RemoteIdeasStoreError } from './ideas-remote.js';
 import { resolveJobsDir } from './jobs.js';
 import { type JsonObject, jsonBoolean, jsonObject, jsonString, parseJson } from './json.js';
-import { countSidecarFiles, resolveLogDir } from './logs.js';
+import { countSidecarFiles, resolveLogDir, today } from './logs.js';
 import { ERR } from './main-history.js';
 import {
   archiveRemoteNote,
@@ -577,6 +578,15 @@ const CAPTURE_DEBOUNCE_MS = 600;
  */
 function captureStream<T>(build: (scope: RebuildScope) => Promise<T | null>): SseStream<T | null> {
   return { watchPath: LOG_DIR, build, debounceMs: CAPTURE_DEBOUNCE_MS };
+}
+
+/**
+ * The corpus-memo identity of a rebuild scope, `*` for the unscoped full read.
+ * A scoped tick that answered "nothing to send" caches that nothing against its
+ * own days, where a later tick naming different days still rebuilds.
+ */
+function scopeKey(scope: RebuildScope): string {
+  return scope === null ? '*' : [...scope].sort().join(',');
 }
 
 /**
@@ -1094,7 +1104,16 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
   },
   '/api/summary': async ({ res, date }) => {
     const now = new Date();
-    const summary = await buildSummary(LOG_DIR, date, now, ARCHIVE_DIR, readSource());
+    const backing = readSource();
+    // Same label and vary the stream below builds under, so a poll lands on the
+    // payload a tick just produced instead of re-deriving it.
+    const summary = await memoiseByCorpus(
+      'summary',
+      LOG_DIR,
+      backing,
+      `${date ?? today(now)}|${ARCHIVE_DIR ?? ''}|*`,
+      () => buildSummary(LOG_DIR, date, now, ARCHIVE_DIR, backing),
+    );
     send(res, 200, summary);
     shadow('/api/summary', summary, (source) => buildSummary(LOG_DIR, date, now, ARCHIVE_DIR, source));
   },
@@ -1106,14 +1125,31 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
     await serveSse(
       req,
       res,
-      captureStream((scope) => buildSummaryScoped(scope, LOG_DIR, date, new Date(), ARCHIVE_DIR, readSource())),
+      captureStream((scope) => {
+        const now = new Date();
+        const backing = readSource();
+        return memoiseByCorpus(
+          'summary',
+          LOG_DIR,
+          backing,
+          `${date ?? today(now)}|${ARCHIVE_DIR ?? ''}|${scopeKey(scope)}`,
+          () => buildSummaryScoped(scope, LOG_DIR, date, now, ARCHIVE_DIR, backing),
+        );
+      }),
     );
   },
   '/api/trends': async ({ res, url }) => {
     const days = await parseDays(url.searchParams.get('days'));
     const models = parseModels(url.searchParams.get('models'));
     const now = new Date();
-    const trends = await buildTrends(LOG_DIR, days, now, ARCHIVE_DIR, readSource(), models);
+    const backing = readSource();
+    const trends = await memoiseByCorpus(
+      'trends',
+      LOG_DIR,
+      backing,
+      `${days}|${today(now)}|${ARCHIVE_DIR ?? ''}|${models ? [...models].sort().join(',') : ''}`,
+      () => buildTrends(LOG_DIR, days, now, ARCHIVE_DIR, backing, models),
+    );
     send(res, 200, trends);
     shadow('/api/trends', trends, (source) => buildTrends(LOG_DIR, days, now, ARCHIVE_DIR, source, models));
   },

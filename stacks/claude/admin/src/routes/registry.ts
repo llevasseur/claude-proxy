@@ -23,6 +23,7 @@ import {
 } from './hooks-plugins';
 import { providers as ideaDetailProviders, route as ideaDetailRoute } from './idea-detail';
 import { nav as ideasNav, providers as ideasProviders, route as ideasRoute } from './ideas';
+import { nav as internetNav, providers as internetProviders, route as internetRoute } from './internet';
 import { providers as jobDetailProviders, route as jobDetailRoute } from './job-detail';
 import { nav as jobsNav, providers as jobsProviders, route as jobsRoute } from './jobs';
 import { providers as memoryDetailProviders, route as memoryDetailRoute } from './memory-detail';
@@ -48,6 +49,7 @@ import {
   route as sessionGraphRoute,
 } from './session-graph';
 import { nav as sessionsNav, providers as sessionsProviders, route as sessionsRoute } from './sessions';
+import { providers as sessionsAliveProviders, route as sessionsAliveRoute } from './sessions-alive';
 import { nav as skimNav, providers as skimProviders, route as skimRoute } from './skim';
 import { providers as suggestionBucketProviders, route as suggestionBucketRoute } from './suggestion-bucket';
 import {
@@ -92,6 +94,7 @@ export const ROUTES = [
   projectDetailRoute,
   memoryDetailRoute,
   sessionsRoute,
+  sessionsAliveRoute,
   sessionGraphRoute,
   sessionDetailRoute,
   sessionErrorsRoute,
@@ -106,6 +109,7 @@ export const ROUTES = [
   commandRunRoute,
   cliInternalsRoute,
   cliFunctionRoute,
+  internetRoute,
   conceptsRoute,
   conceptDetailRoute,
   adviceRoute,
@@ -149,6 +153,7 @@ export const MODULE_SUPPORT = [
   { route: projectDetailRoute, providers: projectDetailProviders },
   { route: memoryDetailRoute, providers: memoryDetailProviders },
   { route: sessionsRoute, nav: sessionsNav, providers: sessionsProviders },
+  { route: sessionsAliveRoute, providers: sessionsAliveProviders },
   { route: sessionGraphRoute, nav: sessionGraphNav, providers: sessionGraphProviders },
   { route: sessionDetailRoute, providers: sessionDetailProviders },
   { route: sessionErrorsRoute, providers: sessionErrorsProviders },
@@ -163,6 +168,7 @@ export const MODULE_SUPPORT = [
   { route: commandRunRoute, providers: commandRunProviders },
   { route: cliInternalsRoute, nav: cliInternalsNav, providers: cliInternalsProviders },
   { route: cliFunctionRoute, providers: cliFunctionProviders },
+  { route: internetRoute, nav: internetNav, providers: internetProviders },
   { route: conceptsRoute, nav: conceptsNav, providers: conceptsProviders },
   { route: conceptDetailRoute, providers: conceptDetailProviders },
   { route: adviceRoute, nav: adviceNav, providers: adviceProviders },
