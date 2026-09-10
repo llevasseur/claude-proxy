@@ -6,11 +6,11 @@ import {
   type AuditSession,
   type AuditSidecar,
   type AuditSkim,
-  HARNESS_IDS,
   type HarnessId,
   isAuditSidecar,
-  PROVIDER_IDS,
   type ProviderId,
+  readSidecar,
+  SidecarValidationError,
 } from '@agent-proxy/claude-core';
 import { commandStorePath } from '../command-runs.js';
 import { deriveFromBody } from '../derive.js';
@@ -22,7 +22,6 @@ import {
   jsonNumber,
   jsonObject,
   jsonString,
-  numberField,
   stringField,
 } from '../json.js';
 import { resolveSessionsDir } from '../sessions.js';
@@ -192,39 +191,51 @@ const CAPTURING_PROVIDER: ProviderId = 'anthropic';
 const CAPTURING_HARNESS: HarnessId = 'claude-code';
 
 /**
- * Resolve one sidecar's stamp, or `null` when the file states an id no adapter
- * is registered for.
+ * A version to satisfy `CapturingAdapters.adapterVersion`, which `readSidecar`
+ * validates but never returns to a v1 caller unread — see the discard below.
+ * Any positive safe integer would do; this is not a claim about a real adapter
+ * release.
+ */
+const UNREAD_CAPTURING_VERSION = 1;
+
+/**
+ * Resolve one sidecar's stamp through `readSidecar` — the one decoding
+ * boundary this repository already has for provider/harness/adapterVersion —
+ * rather than re-checking registry membership here. `null` means the file
+ * states an id no adapter is registered for.
  *
- * A v2 sidecar states its own provider and harness and they are used as stated.
- * A v1 sidecar states neither, and both come from the capturing adapter above —
- * the resolution `readSidecar` already performs for a v1 file.
+ * A v2 sidecar states its own provider, harness and adapter version, and
+ * `readSidecar` returns them as stated. A v1 sidecar states none of the three,
+ * so `readSidecar` resolves provider and harness from the capturing adapter
+ * above — but its `adapterVersion` for that path is the placeholder passed in,
+ * not anything the file recorded, so it is discarded here and replaced with
+ * `null` rather than surfaced as though it were real.
  *
- * **A stated-but-unregistered id resolves to nothing rather than to the
- * capturing adapter.** Quietly reading one provider's record as another's is the
- * exact corruption the v2 discriminator was added to prevent, and `readSidecar`
- * refuses it loudly for the same reason; here the row is skipped and counted
- * instead, because one unreadable file must not halt a pass over the corpus.
+ * **A stated-but-unregistered id throws rather than falling back to the
+ * capturing adapter.** Quietly reading one provider's record as another's is
+ * the exact corruption the v2 discriminator was added to prevent, and
+ * `readSidecar` refuses it loudly for that reason; the row is skipped and
+ * counted here instead, because one unreadable file must not halt a pass over
+ * the corpus.
  */
 function resolveRecordStamp(parsed: JsonInput): RecordStampColumns | null {
-  const statedProvider = stringField(parsed, 'provider');
-  const statedHarness = stringField(parsed, 'harness');
-  // Widened to `string` for the membership test so the check reads a plain
-  // string against the registry, rather than asserting the id it is checking for.
-  const providerIds: readonly string[] = PROVIDER_IDS;
-  const harnessIds: readonly string[] = HARNESS_IDS;
-  if (statedProvider !== undefined && !providerIds.includes(statedProvider)) return null;
-  if (statedHarness !== undefined && !harnessIds.includes(statedHarness)) return null;
-
-  const statedVersion = numberField(parsed, 'adapterVersion');
-  return {
-    // SAFETY: the guard above returned for every value the registry does not
-    // name, so what reaches here is either undefined or a registered id.
-    provider: (statedProvider as ProviderId | undefined) ?? CAPTURING_PROVIDER,
-    // SAFETY: the same invariant as the line above.
-    harness: (statedHarness as HarnessId | undefined) ?? CAPTURING_HARNESS,
-    adapterVersion:
-      statedVersion !== undefined && Number.isInteger(statedVersion) && statedVersion > 0 ? statedVersion : null,
-  };
+  try {
+    const read = readSidecar(parsed, {
+      capturedBy: {
+        provider: CAPTURING_PROVIDER,
+        harness: CAPTURING_HARNESS,
+        adapterVersion: UNREAD_CAPTURING_VERSION,
+      },
+    });
+    return {
+      provider: read.stamp.provider,
+      harness: read.stamp.harness,
+      adapterVersion: read.stampSource === 'capturing-adapter' ? null : read.stamp.adapterVersion,
+    };
+  } catch (err) {
+    if (err instanceof SidecarValidationError) return null;
+    throw err;
+  }
 }
 
 /** Read one sidecar file into the shape the insert statements want. */
