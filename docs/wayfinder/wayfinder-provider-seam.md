@@ -137,8 +137,7 @@ Taken before charting; re-measure rather than trusting these if a ticket turns o
 | # | Task | Plan | Branch | Status | Note |
 |---|------|------|--------|--------|------|
 | 03 | claude-migration-23 | [provider-seam-03-claude-migration-23](provider-seam-03-claude-migration-23.md) | `task/provider-seam-03-claude-migration-23` | in-progress | |
-| 04 | codex-store-repair-and-migration | [provider-seam-04-codex-store-repair-and-migration](provider-seam-04-codex-store-repair-and-migration.md) | `task/provider-seam-04-codex-store-repair-and-migration` | in-progress | |
-| 05 | ox-store-repair-and-migration | [provider-seam-05-ox-store-repair-and-migration](provider-seam-05-ox-store-repair-and-migration.md) | `task/provider-seam-05-ox-store-repair-and-migration` | todo | |
+| 05 | ox-store-repair-and-migration | [provider-seam-05-ox-store-repair-and-migration](provider-seam-05-ox-store-repair-and-migration.md) | `task/provider-seam-05-ox-store-repair-and-migration` | in-progress | |
 | 06 | pricing-table-and-read-time-cost | [provider-seam-06-pricing-table-and-read-time-cost](provider-seam-06-pricing-table-and-read-time-cost.md) | `task/provider-seam-06-pricing-table-and-read-time-cost` | todo | |
 | 07 | typed-store-absence-envelope | [provider-seam-07-typed-store-absence-envelope](provider-seam-07-typed-store-absence-envelope.md) | `task/provider-seam-07-typed-store-absence-envelope` | todo | |
 | 08 | provider-scoped-routes-and-fanout | [provider-seam-08-provider-scoped-routes-and-fanout](provider-seam-08-provider-scoped-routes-and-fanout.md) | `task/provider-seam-08-provider-scoped-routes-and-fanout` | todo | |
@@ -231,6 +230,43 @@ A gate is a commit on `wayfinder/provider-seam` with a green verify and an hones
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 04 — codex-store-repair-and-migration · 2026-09-10 · [#322](https://github.com/llevasseur/claude-proxy/pull/322)
+
+codex's store no longer deletes itself, and then it migrated 3 → 4. The two halves shipped
+in that order in one commit range, because reversed they destroy the corpus.
+
+**Part A.** `stacks/codex/server/src/database.ts` answered an unrecognised `user_version`
+by closing the handle, `rmSync`-ing the database plus its `-wal` and `-shm`, and re-running
+the whole schema — ADR 0028's rebuild-on-mismatch, which ADR 0047 supersedes and ADR 0048
+forbids for the record tier. Replaced by a forward-only ladder shaped like claude's
+`db/open.ts`. A version it cannot reach is a loud refusal that leaves the store untouched:
+newer than the build, below `BASELINE_VERSION` (3), or tables present with no stamp. No 001
+or 002 migration ever existed — deletion stood in for climbing out of those versions — so a
+store at 1 or 2 is refused rather than migrated by a guess.
+
+**Part B.** `migrations/004-record-stamp.sql` adds `provider`, `harness` and
+`adapter_version`, populated at ingest. `cost` and `pricing_source` stay out (ADR 0065),
+and codex keeps its own schema and ladder (ADR 0061).
+
+**Deviations worth keeping.** The migration adds **three** columns, not the four the plan
+names: `model` has been a column since 003, and adding it twice would have been wrong. The
+three values are **restated** in a new `src/record-stamp.ts` rather than imported from
+claude's core — importing would add a cross-stack runtime dependency and a `pnpm-lock.yaml`
+change that collides with the two sibling tickets in flight, and claude's own
+`oxAlphaProviderAdapter` already restates ox's rule for the same reason. `record-stamp.test.ts`
+pins the version against `openAiProviderAdapter`'s declaration by reading that source, so
+the restatement cannot drift. `PRAGMA journal_mode = WAL` moved to **after** the ladder: it
+is persistent, so setting it first rewrote the header and created both journal sidecars for
+a store about to be rejected — the byte-identical assertion is what caught that. Two
+`car.test.ts` tests asserted the deletion behaviour and now assert the refusal, including
+that the rows the old path would have destroyed survive.
+
+Tests: a v3 fixture migrating to 4 with every row preserved and backfilled, three loud
+refusals, a refused file asserted byte-identical with no `-wal`/`-shm` left behind, and an
+anti-deletion guard that scans `src/**.ts` for any removal call or `node:fs` removal import.
+`my-command-tools verify` green. CI needed one re-run for an unrelated
+`stacks/claude/server` timeout flake (`ideas-pr.test.ts`), green on the re-run.
 
 ### 20 — harness-capability-union · 2026-09-10 · [#305](https://github.com/llevasseur/claude-proxy/pull/305)
 

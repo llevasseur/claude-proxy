@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname } from 'node:path';
 import type {
@@ -15,12 +15,27 @@ import {
   parseSanitizedAuditSidecar,
   selectByModels,
 } from '@agent-proxy/codex-core';
+import { RECORD_ADAPTER_VERSION, RECORD_HARNESS, RECORD_PROVIDER } from './record-stamp.ts';
 
 const runtimeRequire = createRequire(import.meta.url);
 const { DatabaseSync } = runtimeRequire('node:sqlite') as typeof import('node:sqlite');
 
-const SCHEMA_VERSION = 3;
-const MIGRATION = readFileSync(new URL('../migrations/003-car-reprice.sql', import.meta.url), 'utf8');
+const SCHEMA_VERSION = 4;
+
+/**
+ * The oldest stamped version this ladder can start from. 003 is a whole-schema
+ * baseline rather than a delta, and no 001 or 002 file has ever existed here:
+ * codex used to answer a version mismatch by deleting the store, so the
+ * migrations that would have climbed out of 1 and 2 were never written. A
+ * database stamped 1 or 2 therefore has no forward path and is refused, which
+ * is the honest answer — ADR 0047 forbids resolving a mismatch by deletion,
+ * and reconstructing two missing migrations from a schema nobody kept would be
+ * a guess applied to somebody's corpus.
+ */
+const BASELINE_VERSION = 3;
+
+const SCHEMA_V3 = readFileSync(new URL('../migrations/003-car-reprice.sql', import.meta.url), 'utf8');
+const SCHEMA_V4 = readFileSync(new URL('../migrations/004-record-stamp.sql', import.meta.url), 'utf8');
 
 interface VersionRow {
   readonly user_version: number;
@@ -135,19 +150,17 @@ export class UsageDatabase {
     if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
     this.database = open(path);
     this.database.exec('PRAGMA foreign_keys = ON');
+    try {
+      migrate(this.database);
+    } catch (error) {
+      // Release the handle only; the store stays exactly as it was found.
+      this.database.close();
+      throw error;
+    }
+    // Set after the ladder, deliberately: `journal_mode = WAL` is persistent
+    // and would modify a database this build is about to refuse.
     this.journalMode = String(this.database.prepare('PRAGMA journal_mode = WAL').get()?.journal_mode ?? 'unknown');
-    const version = userVersion(this.database);
-    if (version !== SCHEMA_VERSION) {
-      this.database.close();
-      if (path !== ':memory:') for (const suffix of ['', '-wal', '-shm']) rmSync(`${path}${suffix}`, { force: true });
-      this.database = open(path);
-      this.database.exec(MIGRATION);
-    }
     this.schemaVersion = userVersion(this.database);
-    if (this.schemaVersion !== SCHEMA_VERSION) {
-      this.database.close();
-      throw new Error(`unsupported database schema version ${this.schemaVersion}`);
-    }
   }
 
   ingest(filename: string, sidecar: SanitizedAuditSidecarV1, now: Date, hooks: IngestHooks = {}): boolean {
@@ -175,8 +188,9 @@ export class UsageDatabase {
             `INSERT INTO usage_records (
                record_id, filename, event_timestamp, day_key, model, endpoint, response_status, request_id,
                input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens,
-               cost_amount_usd, cost_catalogue_version, cost_unavailable_reason, sidecar_json
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+               cost_amount_usd, cost_catalogue_version, cost_unavailable_reason, sidecar_json,
+               provider, harness, adapter_version
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
           .run(
             sidecar.recordId,
@@ -196,6 +210,12 @@ export class UsageDatabase {
             effective.cost?.catalogueVersion ?? null,
             effective.costUnavailableReason === null ? null : JSON.stringify(effective.costUnavailableReason),
             serialized,
+            // Materialised here rather than derived on the way out. Reading it
+            // back is a column read, not an inference — which is the read-time
+            // guessing ADR 0040 forbids.
+            RECORD_PROVIDER,
+            RECORD_HARNESS,
+            RECORD_ADAPTER_VERSION,
           );
         changed = true;
       }
@@ -293,4 +313,59 @@ function open(path: string): InstanceType<typeof DatabaseSync> {
 
 function userVersion(database: InstanceType<typeof DatabaseSync>): number {
   return (database.prepare('PRAGMA user_version').get() as unknown as VersionRow).user_version;
+}
+
+function hasTables(database: InstanceType<typeof DatabaseSync>): boolean {
+  // SAFETY: `COUNT(*)` answers exactly one row whose single column is the
+  // integer aliased here, which is what `CountRow` declares.
+  const row = database
+    .prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+    .get() as unknown as CountRow;
+  return row.count > 0;
+}
+
+/**
+ * Migrate forward, or refuse.
+ *
+ * **This function never deletes anything** — not the database, not its `-wal`,
+ * not its `-shm`. It used to: a `user_version` mismatch closed the handle,
+ * `rmSync`'d all three files and re-ran the whole schema, which is ADR 0028's
+ * rebuild-on-mismatch. [ADR 0047](../../../../docs/adrs/0047-sqlite-substrate-with-forward-only-migrations.md)
+ * supersedes 0028 and forbids resolving a mismatch by deletion, and
+ * [ADR 0048](../../../../docs/adrs/0048-deletion-policy-split-by-tier.md) puts
+ * the record tier out of reach of any deleting operation. A version this
+ * build cannot reach is a loud refusal instead: an operator who is told can
+ * restore a backup, while one whose store was silently rebuilt cannot.
+ */
+function migrate(database: InstanceType<typeof DatabaseSync>): void {
+  const from = userVersion(database);
+  if (from === SCHEMA_VERSION) return;
+
+  if (from > SCHEMA_VERSION) {
+    throw new Error(
+      `database schema version ${from} is newer than this build understands (${SCHEMA_VERSION}); ` +
+        'upgrade the server rather than downgrading the store',
+    );
+  }
+  if (from === 0 && hasTables(database)) {
+    throw new Error('database carries tables but no schema version; refusing to migrate an unrecognized store');
+  }
+  if (from !== 0 && from < BASELINE_VERSION) {
+    throw new Error(
+      `database schema version ${from} predates the oldest migration this build carries (${BASELINE_VERSION}); ` +
+        'no forward path exists, and the store has been left untouched',
+    );
+  }
+
+  // One transaction, so a failure part-way up the ladder leaves the stamped
+  // version and the schema agreeing with each other.
+  database.exec('BEGIN IMMEDIATE');
+  try {
+    if (from < 3) database.exec(SCHEMA_V3);
+    if (from < 4) database.exec(SCHEMA_V4);
+    database.exec('COMMIT');
+  } catch (error) {
+    database.exec('ROLLBACK');
+    throw error;
+  }
 }
