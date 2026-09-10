@@ -422,12 +422,29 @@ bash scripts/bootstrap-worktree.sh
 
 It finds the main checkout via `git rev-parse --git-common-dir` (no hardcoded
 paths, same resolution `scripts/proxy-store-env.sh` uses), symlinks
-`apps/admin/.env`, `proxy/.env`, and `logs/` from it, then runs `pnpm install
---frozen-lockfile`. Symlinks rather than copies, so the main checkout stays the
-single source of truth and new sidecars show up in every worktree at once;
-existing files are kept, missing ones skipped. It refuses to run from the main
-checkout, and needs no branch or base — `/task` invokes it on any worktree it
-creates.
+`stacks/claude/admin/.env`, `stacks/claude/proxy/.env`,
+`stacks/claude/server/.env`, `services/concepts/.env`, and `logs/` from it, then
+runs `pnpm install --frozen-lockfile`. Symlinks rather than copies, so the main
+checkout stays the single source of truth and new sidecars show up in every
+worktree at once; existing files are kept, missing ones skipped. Each env entry
+also names its pre-fusion path (`apps/admin/.env`, `proxy/.env`, `server/.env`)
+as a fallback, because gitignored files do not move when a checkout is updated
+past the relocation. The output says which path it used. The script refuses to
+run from the main checkout and needs no branch or base, so `/task` invokes it on
+any worktree it creates.
+
+The same script answers what this repository boots:
+
+```bash
+bash scripts/bootstrap-worktree.sh --print-verify-contract
+```
+
+That prints `{boot, health, routes}` as JSON and does nothing else. No install,
+no symlinks. It is handled before the main-checkout guard, so it answers from
+anywhere, which is how `/verify` reads it. `boot` is `scripts/dev-boot.sh`. That
+script starts claude's server, waits for `/api/health`, then starts Vite and holds
+the foreground until both exit. The admin origin only comes up behind a healthy
+server, so `http://127.0.0.1:5173/` alone is enough of a health check for both.
 
 ## Docs (okq)
 
