@@ -136,7 +136,6 @@ Taken before charting; re-measure rather than trusting these if a ticket turns o
 
 | # | Task | Plan | Branch | Status | Note |
 |---|------|------|--------|--------|------|
-| 07 | typed-store-absence-envelope | [provider-seam-07-typed-store-absence-envelope](provider-seam-07-typed-store-absence-envelope.md) | `task/provider-seam-07-typed-store-absence-envelope` | in-progress | |
 | 08 | provider-scoped-routes-and-fanout | [provider-seam-08-provider-scoped-routes-and-fanout](provider-seam-08-provider-scoped-routes-and-fanout.md) | `task/provider-seam-08-provider-scoped-routes-and-fanout` | todo | |
 | 13 | cross-provider-token-series | [provider-seam-13-cross-provider-token-series](provider-seam-13-cross-provider-token-series.md) | `task/provider-seam-13-cross-provider-token-series` | todo | |
 | 14 | ui-pricing-crud-page | [provider-seam-14-ui-pricing-crud-page](provider-seam-14-ui-pricing-crud-page.md) | `task/provider-seam-14-ui-pricing-crud-page` | todo | |
@@ -227,6 +226,57 @@ A gate is a commit on `wayfinder/provider-seam` with a green verify and an hones
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 07 — typed-store-absence-envelope · 2026-09-10 · [#325](https://github.com/llevasseur/claude-proxy/pull/325)
+
+A fan-out read can no longer return a bare gap. `stacks/claude/core/src/store-absence.ts`
+holds the vocabulary and `stacks/claude/server/src/db/provider-fanout.ts` is the reader that
+produces it, so every provider contributes either data or a typed reason in a per-provider
+envelope (ADR 0060).
+
+**The three states are three, and the third is the one the code works hardest to protect.**
+A store that was never created is `store-absent` with `data: null` rather than zero, and
+`requiresOperatorAttention` returns **false** for it — that is 0060's "a human should be able
+to ignore it" made executable, because a dashboard showing two faults on a one-proxy device
+teaches its reader to ignore faults. A store that exists and cannot be read is
+`store-unreadable`, carrying a `StoreFault` of `locked`, `corrupt`, `migrating` or an honest
+`unknown` rather than a guess at the nearest cause. A healthy store with no rows in range is
+neither absence: it travels on the available branch as data, so a zero series means the
+provider ran and served nothing.
+
+**Two things the plan named that shaped the type's surface.** A fault outside the store gets
+`provider-unreachable` carrying the origin, and the reader keeps it apart from a store fault
+through a distinct error class rather than a naming convention, so ADR 0062's misattribution
+is unreachable rather than merely discouraged. And the union mirrors `CostUnavailableReason`
+without importing it — `pricing.ts` had already written down that a store's absence "gets its
+own union, written this same way", so this ticket followed that instruction rather than
+extending an unrelated enum.
+
+**Three deviations from a literal reading of the plan, each deliberate.** The type is named
+`ProviderUnavailableReason`, not `StoreUnavailableReason`, because one of its members is
+about a server rather than a store and the name should answer what it actually answers: why
+*this provider* has no data. The union carries a fourth member, `fanout-incomplete`, mirroring
+`CostUnavailableReason`'s own `aggregate-incomplete`, so `aggregateFanout` propagates per ADR
+0044 instead of totalling the providers that answered. And `pickerStatusFor` returns three
+values rather than a boolean degraded flag: a provider that has never run is `absent`, not
+`degraded`, because the picker's question is not the page's and collapsing the two would put
+a steady state and a fault behind one indicator.
+
+**One change the linter forced, which improved the code.** `sqliteFaultFrom` first took
+`unknown` and reached for `Reflect.get` to find the driver code. Anti-slop refused both at
+`error` severity, and the fix was the one the rule asks for rather than a suppression: the
+catch clause parses whatever was thrown into a named `StoreReadFailure` once, and the
+classifier takes that domain type.
+
+The fan-out opens no sibling store. It takes a read function per provider and never a path of
+its own, so ADR 0046's sole controller and its line 72 ban on a cross-provider join hold as
+properties of the code — a test asserts one locked store still leaves the other two
+providers' data intact, and another asserts an aggregate over that fan-out propagates rather
+than dropping the provider.
+
+**Left to ticket 08 on purpose:** the provider-scoped routes and the three-origin client that
+consumes these envelopes. Nothing renders the envelope yet, which is why this ticket's app
+verification came back `unverified` rather than green.
 
 ### 06 — pricing-table-and-read-time-cost · 2026-09-10 · [#324](https://github.com/llevasseur/claude-proxy/pull/324)
 

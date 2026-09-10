@@ -2,7 +2,7 @@
 
 **Wayfinder:** `provider-seam`
 **Branch:** `task/provider-seam-07-typed-store-absence-envelope`
-**Status:** active
+**Status:** done · 2026-09-10
 
 Depends on tickets 03, 04 and 05 — it needs all three stores to fan out over.
 
