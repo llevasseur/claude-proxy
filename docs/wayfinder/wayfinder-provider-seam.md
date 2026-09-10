@@ -136,7 +136,6 @@ Taken before charting; re-measure rather than trusting these if a ticket turns o
 
 | # | Task | Plan | Branch | Status | Note |
 |---|------|------|--------|--------|------|
-| 08 | provider-scoped-routes-and-fanout | [provider-seam-08-provider-scoped-routes-and-fanout](provider-seam-08-provider-scoped-routes-and-fanout.md) | `task/provider-seam-08-provider-scoped-routes-and-fanout` | in-progress | |
 | 13 | cross-provider-token-series | [provider-seam-13-cross-provider-token-series](provider-seam-13-cross-provider-token-series.md) | `task/provider-seam-13-cross-provider-token-series` | todo | |
 | 14 | ui-pricing-crud-page | [provider-seam-14-ui-pricing-crud-page](provider-seam-14-ui-pricing-crud-page.md) | `task/provider-seam-14-ui-pricing-crud-page` | todo | |
 | 15 | ui-unknown-cost-treatment | [provider-seam-15-ui-unknown-cost-treatment](provider-seam-15-ui-unknown-cost-treatment.md) | `task/provider-seam-15-ui-unknown-cost-treatment` | todo | |
@@ -226,6 +225,39 @@ A gate is a commit on `wayfinder/provider-seam` with a green verify and an hones
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 08 — provider-scoped-routes-and-fanout · 2026-09-10 · [#326](https://github.com/llevasseur/claude-proxy/pull/326)
+
+`ApiRouteDeclaration` gained a `provider` field, and the routes split 56 `anthropic` to 29
+`agnostic`. **`agnostic` means no provider corpus, not every provider.** The device and repo
+ledgers answer identically whichever provider is asked, so fanning them over three origins
+would put one question to three servers and get one answer back three times. The split
+follows the per-page judgement ticket 10 already made rather than inventing a second one
+that could disagree with it.
+
+**The dispatcher refuses another provider's route with 421, not 404.** The path exists —
+this server is simply not the one entitled to answer it, and that is the distinction that
+lets a client tell a wrong origin from an undeclared route. A provider-scoped route that
+fails carries a typed `unavailableReason` with it, since only the server can see why its own
+store failed.
+
+`stacks/claude/admin/src/provider-fanout.ts` fans out over the three origins — claude 8788,
+codex 4319, ox 8808 — and merges above the stores. Unreachable and unreadable are separated
+by channel rather than by guesswork: a rejected fetch, a 421, a 5xx carrying a typed reason,
+and everything else each arrive on their own path.
+
+**The rule itself lives in `stacks/claude/core/src/provider-transport.ts` rather than in the
+fetch wrapper**, because claude's admin has no test runner and the decision worth proving
+went where it could be proved. `fanOutEnvelopes` is what catches a rejecting read: a bare
+`Promise.all` discards the answers that settled beside a rejection, so one provider going
+down would have blanked the other two. The redirect guard ticket 10 left unbuilt landed here
+too, as `providerRedirectFor`, reading `MODULE_SUPPORT` with no second list.
+
+`my-command-tools verify` was green on all nine gates, CI passed first try, and `/review`
+found no defects. Browser verification came back `unverified`: port 5173 is held by another
+process on this device, so the server half was exercised directly instead — agnostic routes
+returned 200, an undeclared route 404, and a failing provider-scoped route
+`{"code":"store-unreadable","provider":"anthropic","fault":"unknown"}`.
 
 ### 07 — typed-store-absence-envelope · 2026-09-10 · [#325](https://github.com/llevasseur/claude-proxy/pull/325)
 
