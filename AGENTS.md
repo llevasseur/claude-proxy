@@ -129,9 +129,24 @@ what makes them overridable without moving a default.
 
 - Verify with `my-command-tools verify`; it discovers and runs the root `typecheck`,
   `test`, `build`, `check`, `lint`, `check:env` and `check:names` scripts. `check` is
-  Biome (`biome check .` — lint plus format plus import sorting, read-only) plus
-  `scripts/check-package-filters.mjs`; `format` (`biome check --write .`) is the fixer and
-  `lint` (`biome lint .`) narrows to the linter alone. `anti:slop` is oxlint.
+  Biome (`biome check .` — lint plus format plus import sorting, read-only) plus three
+  node gates — `scripts/check-package-filters.mjs`, `scripts/check-docs.mjs` and
+  `scripts/check-css-flow-spacing.mjs`, reachable alone as `check:names`, `check:docs` and
+  `check:css`; `format` (`biome check --write .`) is the fixer and `lint`
+  (`biome lint .`) narrows to the linter alone. `anti:slop` is oxlint.
+- **`check:css` guards one CSS invariant, and it exists because breaking it is silent.**
+  In claude's admin sheet the gap between the page-level blocks a route composes from —
+  `.grid` and `.card` — must ride the **earlier** sibling
+  (`.grid:has(+ .card) { margin-bottom: … }`), never a `margin-top` on the later one. That
+  spacing lives in `@layer layout`, `styles.css` declares `components` after `layout`, and
+  a component sheet's `margin` shorthand written for its bottom value alone resets the top
+  one on the way past — which is how `.usage-note`'s `margin: 0 0 var(--space-10)` left the
+  Overview's internet-spend card flush against the usage meters with nothing failing or
+  warning. No component sheet styles `.grid`, so on the earlier sibling the gap cannot be
+  cancelled from there. The gate is scoped to claude's sheet on purpose: codex's
+  `layout/card.css` is a mirror fusion carried in, and rewriting its spacing is the visual
+  change ADR 0050's boundary forbids. Same-class runs like `.nav-group + .nav-group` are
+  outside the rule — their subject is neither class, and no component sheet touches them.
 - Biome is configured by `biome.json` at the repo root, pinned to **2.5.6**. Two things
   there are deliberate and should not be "tidied" away:
   - The `files.includes` entry `!**/logs` prunes the log directories. They hold captured
@@ -267,12 +282,20 @@ what makes them overridable without moving a default.
 ## Running everything
 
 `pnpm zellij` opens one stack's proxy, server and admin in a single zellij session, plus a
-spare shell tab. **All three layouts live in the root `.zellij/`** — `claude-proxy.kdl`,
-`codex-proxy.kdl`, `ox-alpha-proxy.kdl` — because each stack's `scripts/zellij.sh` resolves
-the repository top level and `cd`s there before asking for `.zellij/<stack>.kdl`, which
-after fusion is the monorepo root. The two sibling layouts pin `cwd` per pane so a bare
-`pnpm proxy` reaches that stack's script rather than the root one, which is claude's. See
-`.zellij/README.md`.
+spare shell tab. **All four layouts live in the root `.zellij/`** — `claude-proxy.kdl`,
+`codex-proxy.kdl`, `ox-alpha-proxy.kdl`, `net-server.kdl` — because each stack's
+`scripts/zellij.sh` resolves the repository top level and `cd`s there before asking for
+`.zellij/<stack>.kdl`, which after fusion is the monorepo root. The two sibling layouts pin
+`cwd` per pane so a bare `pnpm proxy` reaches that stack's script rather than the root one,
+which is claude's. See `.zellij/README.md`.
+
+**claude's layout opens a fourth pane, net's server, and it is the one cross-stack pane in
+any layout.** claude's admin is net-server's only reader — the Overview's internet-spend
+card and the `/internet` page fetch it at `8531` — so without it the card renders
+"net-server unreachable", and since the hourly collector is a timer inside that process
+(ADR 0072), the hours it was down are missing from the corpus for good. The pane pins
+`cwd "stacks/net"` for the same reason the sibling layouts do: at the monorepo root a bare
+`pnpm server` is claude's. `net-server.kdl` is unchanged and still opens net alone.
 
 Individually, from a stack directory: `pnpm proxy`, `pnpm server`, `pnpm admin`.
 

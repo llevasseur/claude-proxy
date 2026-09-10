@@ -3,9 +3,9 @@
 Four zellij layouts, one per stack, each opening that stack's processes in a `dev` tab
 plus a spare shell. Launch one with `pnpm zellij` from the stack whose session you want —
 the root script starts claude's, `stacks/codex`, `stacks/ox-alpha` and `stacks/net` start
-their own. Claude, codex and ox each open proxy, server and admin; net opens only its
-server, because it has one process — the collector lives inside it (decision
-internet-spend 005).
+their own. Claude opens proxy, server, admin **and net's server**; codex and ox each open
+proxy, server and admin; net opens only its own server, because it has one process — the
+collector lives inside it (decision internet-spend 005).
 
 All four layouts live here rather than under their stacks, and that move repaired
 something rather than tidying it. Each stack's `scripts/zellij.sh` resolves
@@ -15,7 +15,7 @@ files arrived. Both sibling launchers were broken on arrival and are not any mor
 
 | Layout | Launched by | Panes run from |
 |---|---|---|
-| [claude-proxy.kdl](claude-proxy.kdl) | `pnpm zellij` | the monorepo root |
+| [claude-proxy.kdl](claude-proxy.kdl) | `pnpm zellij` | the monorepo root, except the net pane's `cwd "stacks/net"` |
 | [codex-proxy.kdl](codex-proxy.kdl) | `stacks/codex` → `pnpm zellij` | `cwd "stacks/codex"` |
 | [ox-alpha-proxy.kdl](ox-alpha-proxy.kdl) | `stacks/ox-alpha` → `pnpm zellij` | `cwd "stacks/ox-alpha"` |
 | [net-server.kdl](net-server.kdl) | `stacks/net` → `pnpm zellij` | `cwd "stacks/net"` |
@@ -31,6 +31,18 @@ layout.** codex recorded this for the Plane rung of its ladder and it is the rul
 three: one session per stack is what makes `pnpm zellij` mean the same thing everywhere,
 and a second layout for the same stack splits that stack's processes across two sessions
 nobody starts together.
+
+**claude's layout carries one pane that is not claude's, and the reason is consumption
+rather than ownership.** claude's admin is the only reader net-server has — the Overview's
+internet-spend card and the `/internet` page both fetch it at `8531` — so a claude session
+without it shows "net-server unreachable" where the spend should be, and because the
+hourly collector is a timer inside that same process (decision internet-spend 005), the
+hours it was down stay missing from the corpus afterwards. Starting it beside the reader
+is what makes both go away. `net-server.kdl` still exists and still opens net alone: that
+is the session for working on the net stack, and it is the one to launch when claude's
+processes are not wanted. Neither layout is a second layout *for the same stack*, so the
+rule above is intact — a consumer pane crosses stacks, and the thing it forbids is
+splitting one stack's processes in two.
 
 ## The defaults
 

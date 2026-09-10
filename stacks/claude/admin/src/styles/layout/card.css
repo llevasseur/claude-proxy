@@ -89,13 +89,24 @@
     margin-bottom: 0;
   }
   /* Breathing room between a grid and the grid or standalone card stacked under it.
-   `SkeletonStatus` renders an out-of-flow `.sr-only` between them while a view loads,
-   so adjacency has to see through it. */
-  .grid + .grid,
-  .grid + .card,
-  .grid + .sr-only + .grid,
-  .grid + .sr-only + .card {
-    margin-top: var(--space-10);
+   *
+   * The gap sits on the *earlier* element, and that side is load-bearing. As a
+   * `margin-top` on the later one it loses to any component sheet writing a `margin`
+   * shorthand on the same card — `components` is declared after `layout`, and
+   * `margin: 0 0 var(--space-10)` zeroes the top whether or not its author meant to,
+   * which is how `.usage-note` left the internet-spend card flush against the usage
+   * meters. No component sheet styles `.grid`;
+   * `scripts/check-css-flow-spacing.mjs` fails the build if this moves back onto the
+   * card.
+   *
+   * `SkeletonStatus` renders an out-of-flow `.sr-only` between them while a view
+   * loads, so adjacency has to see through it — being `position: absolute` it does
+   * not interrupt the margin collapsing either. */
+  .grid:has(+ .grid),
+  .grid:has(+ .card),
+  .grid:has(+ .sr-only + .grid),
+  .grid:has(+ .sr-only + .card) {
+    margin-bottom: var(--space-10);
   }
   .grid.stats {
     grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
