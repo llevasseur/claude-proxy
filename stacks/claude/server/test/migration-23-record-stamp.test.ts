@@ -141,12 +141,12 @@ describe('migration 23 — the record stamp', () => {
     return { before, skims };
   }
 
-  it('migrates 22 to 23 preserving every row and every existing column value', async () => {
+  it('migrates a database at 22 forward, preserving every row and every existing column value', async () => {
     const { before } = await seedAt22();
     expect(before.length).toBe(2);
 
     const migrated = openDb(logDir);
-    expect(readVersion(migrated)).toBe(23);
+    expect(readVersion(migrated)).toBeGreaterThanOrEqual(23);
     expect(readVersion(migrated)).toBe(SCHEMA_VERSION);
 
     const after = allRequests(migrated);
@@ -195,7 +195,7 @@ describe('migration 23 — the record stamp', () => {
     db.close();
   });
 
-  it('is a no-op on a database already at 23, and takes no second backup', async () => {
+  it('is a no-op on an already-migrated database, and takes no second backup', async () => {
     await seedAt22();
 
     const first = openDb(logDir);
@@ -205,7 +205,7 @@ describe('migration 23 — the record stamp', () => {
     expect(backupsAfterFirst.length).toBe(1);
 
     const second = openDb(logDir);
-    expect(readVersion(second)).toBe(23);
+    expect(readVersion(second)).toBe(SCHEMA_VERSION);
     expect(allRequests(second)).toStrictEqual(afterFirst);
     second.close();
 
@@ -220,7 +220,7 @@ describe('migration 23 — the record stamp', () => {
     const before = fs.statSync(dbPath);
 
     const migrated = openDb(logDir);
-    expect(readVersion(migrated)).toBe(23);
+    expect(readVersion(migrated)).toBe(SCHEMA_VERSION);
     migrated.close();
 
     const after = fs.statSync(dbPath);

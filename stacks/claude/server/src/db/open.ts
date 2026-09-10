@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
+import { FALLBACK_PRICE, normalizeModelKey, priceRowFor } from '@agent-proxy/claude-core';
 
 /**
  * `node:sqlite` is required at runtime, not imported: it is newer than the
@@ -36,7 +37,7 @@ export function resolveDbPath(logDir: string): string {
  * Schema version, tracked in `PRAGMA user_version`. Bump it and add a migration
  * step below when the shape changes, so an existing file survives a `git pull`.
  */
-export const SCHEMA_VERSION = 23;
+export const SCHEMA_VERSION = 24;
 
 /**
  * Slice 1 — audit rows only. The `.md` and `.request.txt` bodies stay on disk;
@@ -913,6 +914,59 @@ UPDATE request
  WHERE provider IS NULL OR harness IS NULL;
 `;
 
+/**
+ * Slice 24 — the rate table.
+ *
+ * [ADR 0044](../../../../../docs/adrs/0044-every-model-gets-a-price-row.md) makes
+ * pricing **a table with a row per model** rather than a constant in source or a
+ * hand-edited JSON file, and gives each proxy its own declared fallback so that a
+ * record priced by one can be stamped `fallback:<proxy>` and still counted.
+ * `seedRateTable` below fills both from what this database already contains.
+ *
+ * ## What is deliberately absent
+ *
+ * **No `valid_from`, no rate history, no `superseded_at`.** 0044 decides there is
+ * no effective dating: one current rate per model prices every row in the corpus,
+ * and editing a rate reprices it. Adding a date column here would not be an
+ * enhancement, it would be a different decision — the dashboard answers "what
+ * would this traffic cost at today's rates", not "what was billed at the time".
+ *
+ * **No `cost` and no `pricing_source` column, on this table or any other.**
+ * [ADR 0065](../../../../../docs/adrs/0065-cost-is-resolved-at-read-time.md)
+ * resolves both at read time from these rows, precisely because a stored stamp
+ * goes stale the moment an operator edits a rate and produces a
+ * share-of-fallback figure that is confidently wrong. `migration-23-record-stamp`
+ * asserts the absence on `request`; nothing here reintroduces it.
+ *
+ * A rate is `NULL` when it is **not configured**, which is not the same fact as a
+ * rate of `0`. Zero is a real price for a genuinely free bucket. `NULL` on a
+ * bucket that actually consumed tokens makes the whole cost unavailable with a
+ * typed reason, which is
+ * [ADR 0020](../../../../../docs/adrs/0020-unavailable-incomplete-cost.md).
+ *
+ * Two `CREATE TABLE IF NOT EXISTS`. Nothing is dropped, rewritten or truncated,
+ * as `docs/adrs/0047-sqlite-substrate-with-forward-only-migrations.md` requires.
+ */
+const SCHEMA_V24 = `
+CREATE TABLE IF NOT EXISTS model_rate (
+  model                TEXT PRIMARY KEY,
+  input_per_mtok       REAL,
+  output_per_mtok      REAL,
+  cache_write_per_mtok REAL,
+  cache_read_per_mtok  REAL,
+  updated_at           TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS proxy_fallback_rate (
+  proxy                TEXT PRIMARY KEY,
+  input_per_mtok       REAL,
+  output_per_mtok      REAL,
+  cache_write_per_mtok REAL,
+  cache_read_per_mtok  REAL,
+  updated_at           TEXT NOT NULL
+);
+`;
+
 const SCHEMA_V4 = `
 DROP TABLE IF EXISTS command_run_pattern;
 DROP TABLE IF EXISTS command_run_step;
@@ -1119,6 +1173,66 @@ export function openDbReadOnly(logDir: string): DatabaseSync {
   return new sqlite.DatabaseSync(resolveDbPath(logDir), { readOnly: true });
 }
 
+/**
+ * The proxy this store declares a fallback for — the `<proxy>` in ADR 0044's
+ * `fallback:<proxy>` stamp. One store, one proxy: ADR 0046 gives each proxy its
+ * own store with its own writer and no cross-provider join at the storage layer,
+ * so this database never holds another proxy's rates.
+ */
+export const CLAUDE_PROXY_ID = 'claude';
+
+/**
+ * Fill the rate table from what this database already contains, once, as slice 24
+ * runs.
+ *
+ * ADR 0044 asks for "a row for every model the corpus contains", and the corpus
+ * is right here — so the seed reads the distinct models off `request` rather than
+ * shipping a guessed list. A model whose family the catalogue in
+ * `stacks/claude/core/src/pricing.ts` recognizes gets that family's rates as its
+ * opening row; one it does not recognize gets **no row**, and resolves against
+ * the declared fallback below with the stamp that says so. That is 0044's shape
+ * exactly, and it is why an unrecognized model is not an error here.
+ *
+ * The rates come from core rather than being restated in SQL, so there is one
+ * place a number is written down. From here the table is the source and the
+ * catalogue is only where it started: an operator edit is never overwritten,
+ * because every insert is `OR IGNORE` and this runs on one version step.
+ */
+function seedRateTable(db: DatabaseSync): void {
+  const now = new Date().toISOString();
+  const insertRate = db.prepare(`
+    INSERT OR IGNORE INTO model_rate
+      (model, input_per_mtok, output_per_mtok, cache_write_per_mtok, cache_read_per_mtok, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `);
+
+  if (hasTable(db, 'request') && hasColumn(db, 'request', 'model')) {
+    // SAFETY: `model` is declared TEXT, and the WHERE discards null and blank, so
+    // every row's single column is a non-empty string.
+    const rows = db
+      .prepare(`SELECT DISTINCT model FROM request WHERE model IS NOT NULL AND TRIM(model) <> ''`)
+      .all() as { model: string }[];
+    for (const { model } of rows) {
+      const row = priceRowFor(model);
+      if (row === null) continue;
+      insertRate.run(normalizeModelKey(model), row.input, row.output, row.cacheWrite, row.cacheRead, now);
+    }
+  }
+
+  db.prepare(`
+    INSERT OR IGNORE INTO proxy_fallback_rate
+      (proxy, input_per_mtok, output_per_mtok, cache_write_per_mtok, cache_read_per_mtok, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(
+    CLAUDE_PROXY_ID,
+    FALLBACK_PRICE.input,
+    FALLBACK_PRICE.output,
+    FALLBACK_PRICE.cacheWrite,
+    FALLBACK_PRICE.cacheRead,
+    now,
+  );
+}
+
 /** Apply any schema steps this file is newer than, then record the new version. */
 function migrate(db: DatabaseSync): void {
   // SAFETY: `PRAGMA user_version` answers a single row whose single column SQLite
@@ -1150,6 +1264,12 @@ function migrate(db: DatabaseSync): void {
   if (from < 21) db.exec(SCHEMA_V21);
   if (from < 22) db.exec(SCHEMA_V22);
   if (from < 23) db.exec(SCHEMA_V23);
+  if (from < 24) {
+    db.exec(SCHEMA_V24);
+    // The only rung that seeds rather than only reshaping: the rows it writes are
+    // to the two tables the line above just created, never to `request`.
+    seedRateTable(db);
+  }
 
   // `PRAGMA user_version` takes no bind parameters, hence the interpolation.
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);

@@ -28,6 +28,7 @@ export * from './prompt-text.js';
 export * from './provenance.js';
 export * from './provider-adapter.js';
 export * from './pull-requests.js';
+export * from './rate-table.js';
 export * from './sessions.js';
 export * from './sidecar.js';
 export * from './skim.js';
