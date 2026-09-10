@@ -148,8 +148,6 @@ export async function readProviderStore<T>(source: ProviderStoreSource<T>): Prom
   try {
     return providerAvailable<T>(source.provider, await source.read());
   } catch (thrown) {
-    // The catch binding is the boundary: whatever was thrown is parsed here into
-    // `StoreReadFailure`, and everything downstream reads that named type.
     const failure: StoreReadFailure =
       thrown instanceof Error ? failureFrom(thrown) : { message: String(thrown), code: '' };
     if (thrown instanceof ProviderUnreachableError) {
