@@ -137,7 +137,6 @@ Taken before charting; re-measure rather than trusting these if a ticket turns o
 | # | Task | Plan | Branch | Status | Note |
 |---|------|------|--------|--------|------|
 | 13 | cross-provider-token-series | [provider-seam-13-cross-provider-token-series](provider-seam-13-cross-provider-token-series.md) | `task/provider-seam-13-cross-provider-token-series` | todo | |
-| 15 | ui-unknown-cost-treatment | [provider-seam-15-ui-unknown-cost-treatment](provider-seam-15-ui-unknown-cost-treatment.md) | `task/provider-seam-15-ui-unknown-cost-treatment` | in-progress | |
 | 17 | ui-interrupted-resumed | [provider-seam-17-ui-interrupted-resumed](provider-seam-17-ui-interrupted-resumed.md) | `task/provider-seam-17-ui-interrupted-resumed` | todo | |
 | 18 | docs-feature-and-spec | [provider-seam-18-docs-feature-and-spec](provider-seam-18-docs-feature-and-spec.md) | `task/provider-seam-18-docs-feature-and-spec` | todo | |
 | zz | retire-done-plans | [provider-seam-zz-retire-done-plans](provider-seam-zz-retire-done-plans.md) | `task/provider-seam-zz-retire-done-plans` | todo | Final ticket — deletes every plan. Execute last. |
@@ -223,6 +222,64 @@ A gate is a commit on `wayfinder/provider-seam` with a green verify and an hones
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 15 — ui-unknown-cost-treatment · 2026-09-10 · [#329](https://github.com/llevasseur/claude-proxy/pull/329)
+
+An unknown cost now looks like one. The plan assumed the data was already flowing; it was
+not — the read-time pricing path from tickets 06 and 12 was **built and entirely
+unplugged**. No route returned a `CostUnavailableReason`, every money field the dashboard
+consumed was a non-nullable `number`, and `$0.00` was therefore indistinguishable from "we
+cannot price this". So this ticket wired the seam as well as rendering it, which is the
+main deviation from what was written down.
+
+`stacks/claude/core/src/unavailable-notice.ts` projects `CostUnavailableReason` and ADR
+0060's `ProviderUnavailableReason` onto one record a surface renders, and
+`describeCostUnavailable` in `pricing.ts` is the counterpart to ticket 07's
+`describeProviderUnavailable`. The unions stay separate types — this is a projection for
+rendering, not a merge — and **severity picks the colour while kind never does**, which is
+what makes criterion 6's one vocabulary real rather than asserted. `unknown-model` splits
+into two rendered codes: a named model with no row is a gap an operator closes by adding
+one, while a record naming no model at all becomes `unattributed-record`, since
+`rateRowFor` withholds even a declared fallback from it. That is the fourth case ticket 06
+produced and the plan did not anticipate.
+
+`GET /api/pricing/coverage` and `stacks/claude/server/src/db/pricing-coverage-store.ts`
+answer what share of the corpus can be priced. Two scopes come from one pass: the corpus
+figure for discoverability, the day figure for the aggregate, because one bad record in the
+archive says nothing about today. The day is bucketed through `reportDay` rather than
+`substr(timestamp, 1, 10)` — a reporting day is a day in the report timezone — and
+availability is memoized by `(model, consumed-bucket pattern)`, which classifies exactly
+where keying on the model alone would report a missing rate against records that never
+consumed that bucket. A closed substrate answers with a typed reason instead of an empty
+table.
+
+On the dashboard: `Unavailable.tsx` (a hollow dashed pill, non-interactive at `size="lg"`
+because `StatCard` wraps its body in a link), `PricingCoverageCard.tsx` on the Overview, a
+new `styles/components/unavailable.css`, and all three money tiles going unavailable on a
+day that holds an unpriced record per ADR 0044's propagation rule. Token counts are never
+blanked.
+
+**The plan's three-phase design protocol ran in full.** A design subagent produced the spec
+against `tokens.css`, implementation followed it, and the same subagent verified in Chrome.
+It found four misses — no gap below the card, a baseline line asserting a direction under
+an unavailable headline, a `<button>` nested inside the tile's `<a>`, and an overhanging
+bubble — and a second pass found the error branch hardcoding `store-unreadable` instead of
+reading the server's typed reason, plus a card title that was a near-synonym of ticket 16's.
+All six were fixed and re-verified green.
+
+**Follow-ups this ticket deliberately did not take.** `RateCoverageCard` still renders a
+bare `not priced` placeholder: its `PricingMixModel` payload carries only
+`cost: string | null` and no typed reason, so constructing one client-side would invent the
+very thing ADR 0020 forbids, and its store belongs to ticket 16. The Overview now carries
+two pricing cards from two tickets that do not collide visually but overlap in purpose; the
+design verifier's recommendation is that they eventually become one. Light-theme `--amber`
+measures 4.34:1 on the bone card, just under 4.5:1, shared with every light-theme
+`.usage-chip` and `.usage-partial` — a palette change no single ticket owns.
+
+Verification was partly environmental: port 5173 was held, so the app ran on 5199, and this
+worktree had no SQLite substrate, so the 503-with-typed-reason path was verified live while
+the populated meter and the unavailable tiles were verified against mocked payloads in the
+real page.
 
 ### 14 — ui-pricing-crud-page · 2026-09-10 · [#328](https://github.com/llevasseur/claude-proxy/pull/328)
 
