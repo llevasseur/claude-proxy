@@ -320,6 +320,8 @@ function userVersion(database: InstanceType<typeof DatabaseSync>): number {
 }
 
 function hasTables(database: InstanceType<typeof DatabaseSync>): boolean {
+  // SAFETY: `COUNT(*)` answers exactly one row whose single column is the
+  // integer aliased here, which is what `CountRow` declares.
   const row = database
     .prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
     .get() as unknown as CountRow;

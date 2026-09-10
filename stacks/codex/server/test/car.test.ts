@@ -95,6 +95,8 @@ describe('Car view schema mismatch', () => {
 
     // The refusal is only worth anything if the corpus survived it.
     const survivor = new DatabaseSync(path);
+    // SAFETY: `COUNT(*)` always answers exactly one row with the single
+    // aliased integer column this shape declares.
     const count = survivor.prepare('SELECT COUNT(*) AS count FROM usage_records').get() as unknown as {
       count: number;
     };
@@ -131,8 +133,12 @@ describe('Car view schema mismatch', () => {
     expect(() => new UsageDatabase(path)).toThrow(/predates the oldest migration/);
 
     const survivor = new DatabaseSync(path);
+    // SAFETY: the legacy table above declares `record_id` as its TEXT primary
+    // key and holds the single row inserted with it.
     const row = survivor.prepare('SELECT record_id FROM usage_records').get() as unknown as { record_id: string };
     expect(row.record_id).toBe('legacy');
+    // SAFETY: `PRAGMA user_version` answers one row with one integer column of
+    // that name.
     expect((survivor.prepare('PRAGMA user_version').get() as unknown as { user_version: number }).user_version).toBe(1);
     survivor.close();
   });

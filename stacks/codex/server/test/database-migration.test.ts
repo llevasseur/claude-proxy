@@ -7,6 +7,9 @@ import { RECORD_ADAPTER_VERSION, RECORD_HARNESS, RECORD_PROVIDER } from '../src/
 import { sidecar, temporaryDirectory } from './helpers.ts';
 
 const runtimeRequire = createRequire(import.meta.url);
+// SAFETY: `node:sqlite` is a built-in module, required at runtime rather than
+// imported so the Node 22 experimental warning stays out of the type graph.
+// The assertion names that module's own published type.
 const { DatabaseSync } = runtimeRequire('node:sqlite') as typeof import('node:sqlite');
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -67,6 +70,8 @@ describe('forward-only migration 3 → 4', () => {
     database.close();
 
     const inspector = new DatabaseSync(path);
+    // SAFETY: the five columns named in the SELECT are the five declared here,
+    // and 003 plus 004 give each of them a NOT NULL type matching this shape.
     const rows = inspector
       .prepare('SELECT record_id, model, provider, harness, adapter_version FROM usage_records ORDER BY record_id')
       .all() as unknown as Array<{
@@ -115,6 +120,8 @@ describe('forward-only migration 3 → 4', () => {
     database.close();
 
     const inspector = new DatabaseSync(path);
+    // SAFETY: the row was just inserted by `ingest`, so the record id matches
+    // and 004 declares all three columns NOT NULL.
     const row = inspector
       .prepare('SELECT provider, harness, adapter_version FROM usage_records WHERE record_id = ?')
       .get('fresh') as unknown as { provider: string; harness: string; adapter_version: number };
