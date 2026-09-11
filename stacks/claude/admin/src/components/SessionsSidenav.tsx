@@ -1,4 +1,4 @@
-import { sessionName, sessionPreview } from '@agent-proxy/claude-core';
+import { fuzzyMatches, sessionName, sessionPreview } from '@agent-proxy/claude-core';
 import { Link } from '@tanstack/react-router';
 import { AlertTriangle, ArrowUp, Check, Plus, Search } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -41,12 +41,14 @@ export function SessionsSidenav({
   const body = useRef<HTMLDivElement>(null);
   const [split, setSplit] = useSplit();
 
+  // Fuzzy rather than substring, like every other search box: the rail is read
+  // from memory of a session, so a fragment or a typo of its name still finds it.
   const matched = useMemo(() => {
-    const needle = filter.trim().toLowerCase();
+    const needle = filter.trim();
     if (!needle) return sessions;
     return sessions.filter((s) =>
-      [sessionName(s), s.threadId, s.subtitle, s.firstTask, s.model].some((field) =>
-        field?.toLowerCase().includes(needle),
+      [sessionName(s), s.threadId, s.subtitle, s.firstTask, s.model].some(
+        (field) => field !== undefined && field !== null && fuzzyMatches(field, needle),
       ),
     );
   }, [sessions, filter]);

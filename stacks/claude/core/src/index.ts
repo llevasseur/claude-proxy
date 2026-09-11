@@ -11,6 +11,7 @@ export * from './cost-rate.js';
 export * from './digest.js';
 export * from './fallbacks.js';
 export * from './filters.js';
+export * from './fuzzy.js';
 export * from './hooks-plugins.js';
 export * from './ideas.js';
 export * from './jobs.js';

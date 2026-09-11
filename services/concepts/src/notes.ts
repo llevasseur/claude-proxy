@@ -1,3 +1,4 @@
+import { fuzzyMatches } from '@agent-proxy/claude-core';
 import type { Db } from './db.ts';
 import { isJsonInteger, isJsonRecord, isJsonText, type JsonRecord, type JsonValue, parseJson } from './json.ts';
 import { toMatchQuery } from './store.ts';
@@ -191,9 +192,70 @@ export async function searchNotes(
       ORDER BY n.updated_at DESC, n.id DESC LIMIT ?`,
     params,
   );
+  if (rows.length > 0) return pageOf(rows, limit);
+
+  // An empty page is two different answers, and they page differently. Walking off
+  // the end of a result set is one; a query the index cannot express is the other —
+  // `imcremental` and `inc` are both invisible to FTS, which matches whole tokens.
+  // One probe tells them apart: ask whether this query answers *anywhere* in the
+  // corpus, ignoring the cursor. If it does, this really is the end of the pages.
+  const anywhere = await db.all<{ id: string }>(
+    `SELECT n.id FROM note_fts
+      JOIN note_revision r ON r.id = note_fts.revision_id
+      JOIN note_current n ON n.current_revision_id = r.id
+      WHERE note_fts MATCH ? AND n.archived_at IS NULL LIMIT 1`,
+    [match],
+  );
+  if (anywhere.length > 0) return { notes: [], nextCursor: null };
+
+  return fuzzySearchNotes(db, query, limit, cursor);
+}
+
+function pageOf(rows: CurrentRow[], limit: number): NotePage {
   const more = rows.length > limit;
   const page = rows.slice(0, limit);
   return { notes: page.map(summary), nextCursor: more ? encodeCursor(page[page.length - 1]!) : null };
+}
+
+/**
+ * The fallback when the index answers nothing: scan the current active notes and
+ * keep the ones answering every word fuzzily — a prefix, an infix or a near-miss.
+ *
+ * A **scan** rather than a second index, because it only ever runs for a query FTS
+ * could not express at all, over the current revision of each unarchived note. The
+ * order is the listing's own — most recently edited first — rather than a relevance
+ * ranking, so paging through it with the same cursor means what it means everywhere
+ * else on this route.
+ */
+async function fuzzySearchNotes(
+  db: Db,
+  query: string,
+  limit: number,
+  cursor: { updatedAt: string; id: string } | null,
+): Promise<NotePage> {
+  const needles = query.trim().split(/\s+/).filter(Boolean);
+  if (needles.length === 0) return { notes: [], nextCursor: null };
+
+  const clauses = ['n.archived_at IS NULL'];
+  const params: (string | number | null)[] = [];
+  if (cursor) {
+    clauses.push('(n.updated_at < ? OR (n.updated_at = ? AND n.id < ?))');
+    params.push(cursor.updatedAt, cursor.updatedAt, cursor.id);
+  }
+  const rows = await db.all<CurrentRow>(
+    `${currentSql(clauses.join(' AND '))} ORDER BY n.updated_at DESC, n.id DESC`,
+    params,
+  );
+
+  const matched: CurrentRow[] = [];
+  for (const row of rows) {
+    if (needles.every((needle) => fuzzyMatches(row.title, needle) || fuzzyMatches(row.body, needle))) {
+      matched.push(row);
+      // One past the page, so `pageOf` can still tell whether another follows.
+      if (matched.length > limit) break;
+    }
+  }
+  return pageOf(matched, limit);
 }
 
 export async function createNote(db: Db, input: JsonRecord, now = new Date()): Promise<Note> {

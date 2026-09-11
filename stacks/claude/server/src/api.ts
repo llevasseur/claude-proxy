@@ -51,6 +51,9 @@ import {
   familyLiveness,
   filterRunsByFlags,
   flattenHooks,
+  fuzzyAnchoredScoreAll,
+  fuzzyMatches,
+  fuzzyScoreBest,
   type HookRow,
   heuristicAdvice,
   hookPluginLoadExpectations,
@@ -3839,11 +3842,15 @@ interface ConceptMatch {
  * Where a query's words land in one record, and the prose to show for it. A description
  * of a hit, never the ranking — the store's bm25 index tokenizes text this scan does
  * not, so a genuine hit can come back with an empty `matchedIn`.
+ *
+ * The reach is fuzzy, matching the scan that selected the record: a field answering
+ * `imcremental` is where that word landed, and saying otherwise would report a hit as
+ * matching nowhere.
  */
 function describeMatch(concept: StoredConcept, tokens: string[]): ConceptMatch {
   const matchedIn = SEARCH_FIELDS.filter((field) => {
-    const text = conceptFieldText(concept, field).toLowerCase();
-    return text !== '' && tokens.some((token) => text.includes(token));
+    const text = conceptFieldText(concept, field);
+    return text !== '' && tokens.some((token) => fuzzyMatches(text, token));
   });
 
   for (const field of UNRENDERED_FIELDS) {
@@ -3855,6 +3862,35 @@ function describeMatch(concept: StoredConcept, tokens: string[]): ConceptMatch {
     }
   }
   return { matchedIn, excerpt: null };
+}
+
+/**
+ * The corpus a query reaches fuzzily, best first.
+ *
+ * Every token must be answered by some field — the same conjunction the store's FTS
+ * query applies to bare tokens — but a token is answered by a prefix, an infix or a
+ * near-miss rather than by an exact substring. A record's score is the sum over tokens
+ * of its best-answering field, so a term matched in two fields outranks one matched in
+ * either alone.
+ */
+function fuzzyConceptMatches(concepts: StoredConcept[], tokens: string[]): { concept: StoredConcept; score: number }[] {
+  const scored: { concept: StoredConcept; score: number }[] = [];
+  for (const concept of concepts) {
+    const texts = SEARCH_FIELDS.map((field) => conceptFieldText(concept, field)).filter((text) => text !== '');
+    let total = 0;
+    let answered = true;
+    for (const token of tokens) {
+      const best = fuzzyScoreBest(texts, token);
+      if (best === null) {
+        answered = false;
+        break;
+      }
+      total += best;
+    }
+    if (answered) scored.push({ concept, score: total });
+  }
+  scored.sort((a, b) => b.score - a.score);
+  return scored;
 }
 
 /** A record's identity across the export and the store's search: term plus timestamp. */
@@ -3924,18 +3960,37 @@ export async function buildConceptSearch(
       concept,
       score: scoreByKey.get(conceptKey(concept.term, concept.savedAt)) ?? null,
     }));
+    // The store's index matches whole tokens, so a fragment or a typo comes back
+    // empty from it while the corpus plainly holds the term — which is how
+    // `inc` and `imcremental` both failed to find "Incremental Delivery". The
+    // fuzzy scan widens that, **after** the ranked hits and never in place of
+    // them: bm25 reaches prose this scan reads too, and it ranks it better.
+    const alreadyRanked = new Set(matched.map((hit) => hit.concept));
+    for (const { concept } of fuzzyConceptMatches(concepts, tokens)) {
+      if (!alreadyRanked.has(concept)) matched.push({ concept, score: null });
+    }
   } else {
-    // Every word must appear somewhere in the record, which is what the store's
-    // FTS query does with bare tokens — the ordering is what differs, not the
-    // reach.
-    matched = concepts
-      .filter((concept) => {
-        const haystack = SEARCH_FIELDS.map((field) => conceptFieldText(concept, field))
-          .join('\n')
-          .toLowerCase();
-        return tokens.every((token) => haystack.includes(token));
-      })
-      .map((concept) => ({ concept, score: null }));
+    // No index to widen — the scan is the whole search, and the same conjunction
+    // over the same fields the store's FTS query applies to bare tokens.
+    matched = fuzzyConceptMatches(concepts, tokens).map(({ concept }) => ({ concept, score: null }));
+  }
+
+  // A reader typing a fragment is naming the **term**, not the prose around it,
+  // and a relevance ranking computed over the whole record cannot tell those
+  // apart: the store put "incremental delivery" nineteenth for `in`, behind
+  // every record whose notes merely use the word. So a record whose term
+  // answers at the start of something leads, best-answered first, and
+  // everything else keeps the order it already had.
+  const leading: { entry: (typeof matched)[number]; lead: number }[] = [];
+  const trailing: typeof matched = [];
+  for (const entry of matched) {
+    const lead = fuzzyAnchoredScoreAll(entry.concept.term, tokens);
+    if (lead === null) trailing.push(entry);
+    else leading.push({ entry, lead });
+  }
+  if (leading.length > 0) {
+    leading.sort((a, b) => b.lead - a.lead);
+    matched = [...leading.map((hit) => hit.entry), ...trailing];
   }
 
   return {

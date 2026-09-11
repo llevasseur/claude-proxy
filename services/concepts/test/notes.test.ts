@@ -87,6 +87,41 @@ describe('notes domain', () => {
     await expect(searchNotes(db, '"unbalanced')).resolves.toMatchObject({ notes: [{ title: 'C++ move semantics' }] });
   });
 
+  it('falls back to a fuzzy scan for a query the index cannot express', async () => {
+    const db = testDb();
+    const note = await createNote(db, { title: 'Incremental Delivery', body: 'Ship it in slices.' }, T0);
+    // A fragment and a typo are both invisible to FTS, which matches whole tokens.
+    for (const typed of ['inc', 'imcremental', 'deliv']) {
+      await expect(searchNotes(db, typed)).resolves.toMatchObject({ notes: [{ id: note.id }] });
+    }
+  });
+
+  it('leaves an indexed hit to the index, and still answers nothing for nothing', async () => {
+    const db = testDb();
+    await createNote(db, { title: 'Incremental Delivery', body: 'Ship it in slices.' }, T0);
+    await expect(searchNotes(db, 'delivery')).resolves.toMatchObject({ notes: [{ title: 'Incremental Delivery' }] });
+    await expect(searchNotes(db, 'kubernetes')).resolves.toMatchObject({ notes: [], nextCursor: null });
+  });
+
+  it('excludes an archived note from the fuzzy fallback too', async () => {
+    const db = testDb();
+    const note = await createNote(db, { title: 'Incremental Delivery', body: 'Ship it in slices.' }, T0);
+    await archiveNote(db, note.id, T1);
+    await expect(searchNotes(db, 'imcremental')).resolves.toMatchObject({ notes: [] });
+  });
+
+  it('pages the fuzzy fallback on the same cursor as every other listing', async () => {
+    const db = testDb();
+    const older = await createNote(db, { title: 'Incremental Delivery', body: 'One.' }, T0);
+    const newer = await createNote(db, { title: 'Incremental Planning', body: 'Two.' }, T1);
+    const first = await searchNotes(db, 'imcremental', { limit: 1 });
+    expect(first.notes.map((note) => note.id)).toEqual([newer.id]);
+    expect(first.nextCursor).not.toBeNull();
+    const second = await searchNotes(db, 'imcremental', { limit: 1, cursor: first.nextCursor! });
+    expect(second.notes.map((note) => note.id)).toEqual([older.id]);
+    expect(second.nextCursor).toBeNull();
+  });
+
   it('does not advance updatedAt or version for no-op updates, archive, or restore', async () => {
     const db = testDb();
     const note = await createNote(db, { title: 'same', body: 'same' }, T0);
