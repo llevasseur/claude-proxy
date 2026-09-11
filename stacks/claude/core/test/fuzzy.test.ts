@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   boundedEditDistance,
   foldForSearch,
+  fuzzyAnchoredScoreAll,
   fuzzyMatches,
   fuzzyMatchesAll,
   fuzzyScore,
@@ -35,6 +36,15 @@ describe('fuzzyScore', () => {
 
   it('matches an infix', () => {
     expect(fuzzyScore(TERM, 'cremental')).not.toBeNull();
+  });
+
+  it('refuses a two-character infix, which would otherwise match most of the language', () => {
+    // `in` must still find "Incremental Delivery" — by the word it starts.
+    expect(fuzzyScore(TERM, 'in')).not.toBeNull();
+    // …but not "training", where it sits mid-word.
+    expect(fuzzyScore('training data', 'in')).toBeNull();
+    // Three characters is enough to mean something mid-word again.
+    expect(fuzzyScore('training data', 'ain')).not.toBeNull();
   });
 
   it('ranks an exact hit over a prefix, and a prefix over a typo', () => {
@@ -102,6 +112,28 @@ describe('fuzzyScoreAll', () => {
   it('treats no terms at all as an unnarrowed search', () => {
     expect(fuzzyScoreAll(TERM, [])).toBe(0);
     expect(fuzzyMatchesAll(TERM, [])).toBe(true);
+  });
+});
+
+describe('fuzzyAnchoredScoreAll', () => {
+  it('accepts a needle answered at the start of the text, of a word, or by the initials', () => {
+    expect(fuzzyAnchoredScoreAll(TERM, ['inc'])).not.toBeNull();
+    expect(fuzzyAnchoredScoreAll(TERM, ['delivery'])).not.toBeNull();
+    expect(fuzzyAnchoredScoreAll(TERM, ['id'])).not.toBeNull();
+  });
+
+  it('refuses a needle answered only mid-word or only by a near-miss', () => {
+    // Both still match — they are just not the reader naming the term.
+    expect(fuzzyScore(TERM, 'cremental')).not.toBeNull();
+    expect(fuzzyAnchoredScoreAll(TERM, ['cremental'])).toBeNull();
+    expect(fuzzyScore(TERM, 'imcremental')).not.toBeNull();
+    expect(fuzzyAnchoredScoreAll(TERM, ['imcremental'])).toBeNull();
+  });
+
+  it('requires every needle, and refuses an empty list rather than leading with everything', () => {
+    expect(fuzzyAnchoredScoreAll(TERM, ['inc', 'deliv'])).not.toBeNull();
+    expect(fuzzyAnchoredScoreAll(TERM, ['inc', 'cremental'])).toBeNull();
+    expect(fuzzyAnchoredScoreAll(TERM, [])).toBeNull();
   });
 });
 

@@ -169,9 +169,7 @@ describe('the hosted store answers the search', () => {
     // from it while the corpus plainly holds the word.
     stubWorker([]);
 
-    expect((await buildConceptSearch(logDir, 'vestib')).results.map((r) => r.concept.term)).toEqual([
-      'rubber-banding',
-    ]);
+    expect((await buildConceptSearch(logDir, 'vestib')).results.map((r) => r.concept.term)).toEqual(['rubber-banding']);
     expect((await buildConceptSearch(logDir, 'idemponent')).results.map((r) => r.concept.term)).toEqual(['watermark']);
   });
 
@@ -186,6 +184,19 @@ describe('the hosted store answers the search', () => {
     expect(results[0]?.score).toBe(5);
     // Widened rows carry no bm25 score, because the store never scored them.
     expect(results[1]?.score).toBeNull();
+  });
+
+  it('leads with the record the query names, ahead of records whose prose merely uses it', async () => {
+    configureRemote();
+    // bm25 ranks the whole record, so a query that *is* the start of one term
+    // can still come back behind records that only mention the word — which is
+    // how `in` put the term the reader wanted nineteenth.
+    stubWorker([hit(0, 9.5), hit(1, 2.25)]);
+
+    const { results } = await buildConceptSearch(logDir, 'water');
+    expect(results.map((r) => r.concept.term)).toEqual(['watermark', 'rubber-banding']);
+    // Promotion reorders; it never drops the store's score.
+    expect(results[0]?.score).toBe(2.25);
   });
 
   it('never puts the token, or the query, in the answer', async () => {

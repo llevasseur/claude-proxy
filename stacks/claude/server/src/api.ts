@@ -51,6 +51,7 @@ import {
   familyLiveness,
   filterRunsByFlags,
   flattenHooks,
+  fuzzyAnchoredScoreAll,
   fuzzyMatches,
   fuzzyScoreBest,
   type HookRow,
@@ -3972,6 +3973,24 @@ export async function buildConceptSearch(
     // No index to widen — the scan is the whole search, and the same conjunction
     // over the same fields the store's FTS query applies to bare tokens.
     matched = fuzzyConceptMatches(concepts, tokens).map(({ concept }) => ({ concept, score: null }));
+  }
+
+  // A reader typing a fragment is naming the **term**, not the prose around it,
+  // and a relevance ranking computed over the whole record cannot tell those
+  // apart: the store put "incremental delivery" nineteenth for `in`, behind
+  // every record whose notes merely use the word. So a record whose term
+  // answers at the start of something leads, best-answered first, and
+  // everything else keeps the order it already had.
+  const leading: { entry: (typeof matched)[number]; lead: number }[] = [];
+  const trailing: typeof matched = [];
+  for (const entry of matched) {
+    const lead = fuzzyAnchoredScoreAll(entry.concept.term, tokens);
+    if (lead === null) trailing.push(entry);
+    else leading.push({ entry, lead });
+  }
+  if (leading.length > 0) {
+    leading.sort((a, b) => b.lead - a.lead);
+    matched = [...leading.map((hit) => hit.entry), ...trailing];
   }
 
   return {

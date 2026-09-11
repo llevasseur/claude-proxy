@@ -30,13 +30,16 @@
 const EXACT = 1000;
 const TEXT_PREFIX = 900;
 const WORD_PREFIX = 800;
-const SUBSTRING = 700;
-const ACRONYM = 600;
+const ACRONYM = 700;
+const SUBSTRING = 600;
 const WORD_TYPO = 400;
 const PREFIX_TYPO = 300;
 
 /** The most a position can cost inside its band, so bands never overlap. */
 const MAX_PENALTY = 50;
+
+/** The shortest needle allowed to match mid-word rather than at a word's start. */
+const MIN_INFIX = 3;
 
 /** Combining marks, stripped after NFD so `é` and `e` are the same character. */
 const COMBINING = /[̀-ͯ]/g;
@@ -125,8 +128,8 @@ const positionPenalty = (at: number): number => Math.min(at, MAX_PENALTY);
  * 1. the whole text is the needle;
  * 2. the text starts with it — `inc` for "Incremental Delivery";
  * 3. some word starts with it — `delivery`, mid-phrase;
- * 4. the text contains it anywhere — `cremental`;
- * 5. the needle spells out the words' initials — `id`;
+ * 4. the needle spells out the words' initials — `id`;
+ * 5. the text contains it anywhere — `cremental`, from three characters up;
  * 6. some word is within the typo budget — `imcremental`;
  * 7. some word *starts* within the budget, so a partial may be misspelt too —
  *    `imcrem`.
@@ -150,15 +153,24 @@ export function fuzzyScore(text: string, needle: string): number | null {
   }
   if (wordPrefixAt >= 0) return WORD_PREFIX - positionPenalty(wordPrefixAt);
 
-  const at = haystack.indexOf(query);
-  if (at >= 0) return SUBSTRING - positionPenalty(at);
-
   // Initials only, so `id` reaches "Incremental Delivery" without `id` also
-  // reaching every text that happens to hold those two letters in order.
+  // reaching every text that happens to hold those two letters in order. Tried
+  // ahead of the infix below because naming a thing by its initials is
+  // deliberate in a way that landing inside one of its words is not.
   if (query.length >= 2 && words.length >= 2) {
     const initials = words.map((word) => word[0]).join('');
     const acronymAt = initials.indexOf(query);
     if (acronymAt >= 0) return ACRONYM - positionPenalty(acronymAt);
+  }
+
+  // An infix needs three characters to mean anything. `in` sits inside most of
+  // the English language — matching it mid-word returned 26 of 27 concepts and
+  // buried the one the reader wanted nineteenth. Two characters therefore reach
+  // only the tiers anchored to a word's start, which is what makes `in` a useful
+  // way to ask for "Incremental Delivery" rather than for everything.
+  if (query.length >= MIN_INFIX) {
+    const at = haystack.indexOf(query);
+    if (at >= 0) return SUBSTRING - positionPenalty(at);
   }
 
   const budget = typoBudget(query.length);
@@ -220,6 +232,30 @@ export function fuzzyScoreAll(text: string, needles: readonly string[]): number 
 /** Whether `text` answers every needle. */
 export function fuzzyMatchesAll(text: string, needles: readonly string[]): boolean {
   return fuzzyScoreAll(text, needles) !== null;
+}
+
+/** The lowest score a tier anchored to the start of a word can produce. */
+const ANCHORED_FLOOR = ACRONYM - MAX_PENALTY;
+
+/**
+ * The combined score when every needle is answered **at the start of something**
+ * — the whole text, a word in it, or the initials the words spell — and `null`
+ * when any needle is answered only mid-word, only by a near-miss, or not at all.
+ *
+ * This is the difference between naming a thing and merely mentioning it, and it
+ * is what a reader typing a fragment is doing. A relevance ranking computed over
+ * a whole record cannot tell the two apart: bm25 put "incremental delivery"
+ * nineteenth for `in`, behind every record whose prose happens to use the word.
+ */
+export function fuzzyAnchoredScoreAll(text: string, needles: readonly string[]): number | null {
+  if (needles.length === 0) return null;
+  let total = 0;
+  for (const needle of needles) {
+    const score = fuzzyScore(text, needle);
+    if (score === null || score < ANCHORED_FLOOR) return null;
+    total += score;
+  }
+  return total;
 }
 
 /**
