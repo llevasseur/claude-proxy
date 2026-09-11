@@ -43,18 +43,27 @@ const BYTE_STEPS = [
   { min: 1e3, unit: 'KB' },
 ] as const;
 
-const byteNf = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
+// No grouping: the old ladder's `toFixed` never emitted a separator, and the figures that
+// can pass 999 in their unit are chart ticks, where a comma is width the axis has not got.
+const byteNf = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2, useGrouping: false });
 
 /**
  * Bytes at the largest unit that leaves a figure of at least one. Up to two decimals,
  * trailing zeros dropped so a tick stays narrow; whole below a kilobyte, where a fraction
- * of a byte is not a quantity.
+ * of a byte is not a quantity. Non-finite input reads `—`.
  */
 export function fmtBytes(n: number): string {
-  for (const step of BYTE_STEPS) {
-    if (n >= step.min) return `${byteNf.format(n / step.min)} ${step.unit}`;
+  if (!Number.isFinite(n)) return '—';
+  const magnitude = Math.round(Math.abs(n));
+  const sign = n < 0 && magnitude > 0 ? '-' : '';
+  for (const [index, step] of BYTE_STEPS.entries()) {
+    if (magnitude < step.min) continue;
+    // The step is chosen before the figure is rounded, so a mantissa that rounds to 1000
+    // belongs one step up: 999_999_999 is `1 GB`, not `1000 MB`.
+    const unit = magnitude / step.min >= 999.995 ? (BYTE_STEPS[index - 1] ?? step) : step;
+    return `${sign}${byteNf.format(magnitude / unit.min)} ${unit.unit}`;
   }
-  return `${Math.round(n)} B`;
+  return `${sign}${magnitude} B`;
 }
 
 export function deltaLabel(pct: number): string {
