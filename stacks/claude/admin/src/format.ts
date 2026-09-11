@@ -35,10 +35,34 @@ export function fmtDuration(ms: number): string {
   return `${Math.floor(mins / 60)}h ${mins % 60}m`;
 }
 
+/** Decimal steps, largest first — 1 KB is 1000 B, as macOS and ISP allowances count it. */
+const BYTE_STEPS = [
+  { min: 1e12, unit: 'TB' },
+  { min: 1e9, unit: 'GB' },
+  { min: 1e6, unit: 'MB' },
+  { min: 1e3, unit: 'KB' },
+] as const;
+
+// No grouping: a comma is width a chart tick has not got.
+const byteNf = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2, useGrouping: false });
+
+/**
+ * Bytes at the largest unit that leaves a figure of at least one. Up to two decimals,
+ * trailing zeros dropped so a tick stays narrow; whole below a kilobyte, where a fraction
+ * of a byte is not a quantity. Non-finite input reads `—`.
+ */
 export function fmtBytes(n: number): string {
-  if (n >= 1e6) return `${(n / 1e6).toFixed(1)} MB`;
-  if (n >= 1e3) return `${(n / 1e3).toFixed(1)} KB`;
-  return `${n} B`;
+  if (!Number.isFinite(n)) return '—';
+  const magnitude = Math.round(Math.abs(n));
+  const sign = n < 0 && magnitude > 0 ? '-' : '';
+  for (const [index, step] of BYTE_STEPS.entries()) {
+    if (magnitude < step.min) continue;
+    // The step is picked before the figure is rounded, so a mantissa that rounds to 1000
+    // belongs one step up.
+    const unit = magnitude / step.min >= 999.995 ? (BYTE_STEPS[index - 1] ?? step) : step;
+    return `${sign}${byteNf.format(magnitude / unit.min)} ${unit.unit}`;
+  }
+  return `${sign}${magnitude} B`;
 }
 
 export function deltaLabel(pct: number): string {
