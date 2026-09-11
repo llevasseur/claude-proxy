@@ -163,6 +163,31 @@ describe('the hosted store answers the search', () => {
     expect(results.map((r) => r.concept.term)).toEqual(['rubber-banding']);
   });
 
+  it('widens a query the store’s index cannot express, rather than answering nothing', async () => {
+    configureRemote();
+    // bm25 matches whole tokens, so a fragment and a typo both come back empty
+    // from it while the corpus plainly holds the word.
+    stubWorker([]);
+
+    expect((await buildConceptSearch(logDir, 'vestib')).results.map((r) => r.concept.term)).toEqual([
+      'rubber-banding',
+    ]);
+    expect((await buildConceptSearch(logDir, 'idemponent')).results.map((r) => r.concept.term)).toEqual(['watermark']);
+  });
+
+  it('keeps the store’s ranking in front of anything the widening added', async () => {
+    configureRemote();
+    // The store ranks `watermark` for this; the fuzzy pass also reaches
+    // `rubber-banding`, whose sentence says "scroll past its end".
+    stubWorker([hit(1, 5)]);
+
+    const { results } = await buildConceptSearch(logDir, 'scroll');
+    expect(results.map((r) => r.concept.term)).toEqual(['watermark', 'rubber-banding']);
+    expect(results[0]?.score).toBe(5);
+    // Widened rows carry no bm25 score, because the store never scored them.
+    expect(results[1]?.score).toBeNull();
+  });
+
   it('never puts the token, or the query, in the answer', async () => {
     configureRemote();
     stubWorker([hit(0, 1)]);
@@ -232,6 +257,18 @@ describe('the local file, which has no ranked search', () => {
   it('matches without regard to case', async () => {
     await writeLocalStore();
     expect((await buildConceptSearch(logDir, 'VESTIBULAR')).results).toHaveLength(1);
+  });
+
+  it('finds a record from a fragment or a misspelling of a word in it', async () => {
+    await writeLocalStore();
+    for (const typed of ['idempo', 'idemponent', 'watermrak']) {
+      expect((await buildConceptSearch(logDir, typed)).results.map((r) => r.concept.term)).toEqual(['watermark']);
+    }
+  });
+
+  it('still refuses a query the corpus does not answer', async () => {
+    await writeLocalStore();
+    expect((await buildConceptSearch(logDir, 'kubernetes')).results).toEqual([]);
   });
 
   it('issues no request at all — a local backing has no store to ask', async () => {

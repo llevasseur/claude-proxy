@@ -78,6 +78,25 @@ describe('promptMatches', () => {
     expect(promptMatches(null, 'search')).toBe(false);
     expect(promptMatches('', 'search')).toBe(false);
   });
+
+  it('answers a fragment of a word, which is what half-remembering a prompt looks like', () => {
+    expect(promptMatches(prompt, 'ful')).toBe(true);
+    expect(promptMatches(prompt, 'sear')).toBe(true);
+  });
+
+  it('survives a typo', () => {
+    expect(promptMatches(prompt, 'contxet')).toBe(true);
+    expect(promptMatches(prompt, 'serach')).toBe(true);
+  });
+
+  it('keeps a quoted term literal, which is how a widened search is narrowed again', () => {
+    expect(promptMatches(prompt, '"context size"')).toBe(true);
+    expect(promptMatches(prompt, '"contxet size"')).toBe(false);
+  });
+
+  it('still refuses a word the prompt has nothing like', () => {
+    expect(promptMatches(prompt, 'kubernetes')).toBe(false);
+  });
 });
 
 describe('promptExcerpt', () => {
