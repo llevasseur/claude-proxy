@@ -43,8 +43,7 @@ const BYTE_STEPS = [
   { min: 1e3, unit: 'KB' },
 ] as const;
 
-// No grouping: the old ladder's `toFixed` never emitted a separator, and the figures that
-// can pass 999 in their unit are chart ticks, where a comma is width the axis has not got.
+// No grouping: a comma is width a chart tick has not got.
 const byteNf = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2, useGrouping: false });
 
 /**
@@ -58,8 +57,8 @@ export function fmtBytes(n: number): string {
   const sign = n < 0 && magnitude > 0 ? '-' : '';
   for (const [index, step] of BYTE_STEPS.entries()) {
     if (magnitude < step.min) continue;
-    // The step is chosen before the figure is rounded, so a mantissa that rounds to 1000
-    // belongs one step up: 999_999_999 is `1 GB`, not `1000 MB`.
+    // The step is picked before the figure is rounded, so a mantissa that rounds to 1000
+    // belongs one step up.
     const unit = magnitude / step.min >= 999.995 ? (BYTE_STEPS[index - 1] ?? step) : step;
     return `${sign}${byteNf.format(magnitude / unit.min)} ${unit.unit}`;
   }
