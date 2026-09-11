@@ -35,10 +35,7 @@ export function fmtDuration(ms: number): string {
   return `${Math.floor(mins / 60)}h ${mins % 60}m`;
 }
 
-/**
- * Decimal steps, largest first — 1 KB is 1000 B, matching macOS, the ISP allowances the
- * internet budget is set against, and what `fmtBytes` already counted in.
- */
+/** Decimal steps, largest first — 1 KB is 1000 B, as macOS and ISP allowances count it. */
 const BYTE_STEPS = [
   { min: 1e12, unit: 'TB' },
   { min: 1e9, unit: 'GB' },
@@ -49,11 +46,9 @@ const BYTE_STEPS = [
 const byteNf = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
 
 /**
- * Bytes at the largest unit that leaves a figure of at least one, e.g. `4.29 GB` — the
- * ladder runs to TB, because a month of wire bytes outgrows MB and `4290000.0 MB` is not
- * a reading. Up to two decimals with trailing zeros dropped, so an exact figure stays
- * short (`2 GB`, not `2.00 GB`) and an axis tick stays narrow. Below a kilobyte the
- * figure is whole: a fraction of a byte is not a quantity.
+ * Bytes at the largest unit that leaves a figure of at least one. Up to two decimals,
+ * trailing zeros dropped so a tick stays narrow; whole below a kilobyte, where a fraction
+ * of a byte is not a quantity.
  */
 export function fmtBytes(n: number): string {
   for (const step of BYTE_STEPS) {
