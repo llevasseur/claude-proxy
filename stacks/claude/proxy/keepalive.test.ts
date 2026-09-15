@@ -171,7 +171,7 @@ test('refuses a non-finite value', () => {
   assert.equal(clampDeadlineHours(Number.NaN), null);
   assert.equal(clampDeadlineHours(Number.POSITIVE_INFINITY), null);
   assert.equal(clampDeadlineHours(Number.NEGATIVE_INFINITY), null);
-  assert.equal(clampDeadlineHours('8'), null);
+  assert.equal(clampDeadlineHours(null), null);
   assert.equal(clampDeadlineHours(undefined), null);
 });
 

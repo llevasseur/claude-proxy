@@ -136,6 +136,13 @@ export interface KeepaliveOutcome {
   detail?: string;
 }
 
+/**
+ * The non-auth request headers a ping replays, by header name. Named rather than written
+ * inline at each use, so the one contract — header name to single value, credential
+ * already dropped — is stated once and every holder of one is holding the same thing.
+ */
+export type StoredHeaders = Record<string, string>;
+
 /** One registry entry. The body, the headers and the bearer never leave this process. */
 interface Entry {
   sessionKey: string;
@@ -144,7 +151,7 @@ interface Entry {
   /** The stored forward body a ping replays. */
   body: RequestBody | null;
   /** The stored non-auth headers a ping replays. */
-  headers: Record<string, string>;
+  headers: StoredHeaders;
   ttlMs: number;
   deadline: number;
   lastActivity: number;
@@ -182,10 +189,7 @@ export interface PingResult {
 }
 
 /** The upstream call a ping makes, as a seam a test can stand in for. */
-export type PingTransport = (request: {
-  body: string;
-  headers: Record<string, string>;
-}) => Promise<PingResult>;
+export type PingTransport = (request: { body: string; headers: StoredHeaders }) => Promise<PingResult>;
 
 /**
  * The newest bearer observed for one `account_uuid`, or null when none is held. Ticket 02
@@ -290,8 +294,8 @@ function highestUtilization(payload: JsonValue | null, depth = 0): number | null
  * registration that asked for nonsense should be refused rather than silently given a
  * default it never requested. Anything above the ceiling is clamped down to it.
  */
-export function clampDeadlineHours(hours: unknown): number | null {
-  if (typeof hours !== 'number' || !Number.isFinite(hours) || hours <= 0) return null;
+export function clampDeadlineHours(hours: number | null | undefined): number | null {
+  if (hours == null || !Number.isFinite(hours) || hours <= 0) return null;
   return Math.min(hours, MAX_DEADLINE_HOURS);
 }
 
@@ -393,12 +397,13 @@ export function buildPingBody(body: RequestBody | null | undefined): RequestBody
 }
 
 /** The stored headers, with the credential and every hop-by-hop name dropped. */
-export function storableHeaders(headers: HeaderBag | undefined | null): Record<string, string> {
-  const kept: Record<string, string> = {};
+export function storableHeaders(headers: HeaderBag | undefined | null) {
+  const kept: StoredHeaders = {};
   for (const [name, value] of Object.entries(headers ?? {})) {
     if (DROPPED_HEADERS.has(name.toLowerCase())) continue;
     const first = Array.isArray(value) ? value[0] : value;
-    if (typeof first === 'string') kept[name] = first;
+    if (first === undefined) continue;
+    kept[name] = first;
   }
   return kept;
 }
@@ -523,7 +528,7 @@ function isDue(entry: Entry, now: number): boolean {
  */
 export async function sweepOnce(now = Date.now()): Promise<void> {
   const utilization = utilizationSource();
-  for (const entry of [...entries.values()]) {
+  for (const entry of entries.values()) {
     if (entry.state === 'stopped') continue;
 
     if (now >= entry.deadline) {
@@ -557,7 +562,7 @@ async function sendPing(entry: Entry, bearer: string, startedAt: number): Promis
     return;
   }
   const payload = JSON.stringify(pingBody);
-  const headers: Record<string, string> = {
+  const headers = {
     ...entry.headers,
     authorization: bearer,
     'content-type': 'application/json',
@@ -623,7 +628,7 @@ export function startKeepalive({ intervalMs = SWEEP_INTERVAL_MS }: { intervalMs?
  * keeps a ping out of `handle()` and therefore out of every side effect reachable from
  * it. Reads only the token counts off the reply; the body itself is dropped.
  */
-function httpsPing({ body, headers }: { body: string; headers: Record<string, string> }): Promise<PingResult> {
+function httpsPing({ body, headers }: { body: string; headers: StoredHeaders }): Promise<PingResult> {
   return new Promise((resolve, reject) => {
     const request = https.request(
       { hostname: UPSTREAM_HOST, port: 443, path: MESSAGES_PATH, method: 'POST', headers },
