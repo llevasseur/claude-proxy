@@ -16,8 +16,8 @@
  */
 import { buildSummary } from './api.js';
 import { resolveArchiveDir } from './archive.js';
-// Type-only, so it is erased: the module itself stays behind the dynamic import
-// in `ingestWithRetry`, which is what keeps `node:sqlite` off a dry run's path.
+// Type-only, so it is erased: the module stays behind the dynamic import in
+// `ingestWithRetry`, which keeps `node:sqlite` off a dry run's path.
 import type { IngestStats } from './db/ingest.js';
 import { errorMessage } from './errors.js';
 import { resolveLogDir } from './logs.js';
@@ -138,11 +138,9 @@ async function reconcileRuns(logDir: string): Promise<void> {
  * How long one ingest attempt waits for whoever else holds the database before
  * SQLite answers `database is locked`.
  *
- * The other holder is claude-server, and it is normally *up* when this job fires:
- * the installed agent runs at 21:07. So losing that race was the common case
- * rather than the exception, and both ingest passes below printed one line and
- * carried on as though the run were clean. Its writes are per-sidecar and
- * sub-second, so waiting is what the wait is for.
+ * The other holder is claude-server, normally *up* when this job fires — the
+ * installed agent runs at 21:07. Its writes are per-sidecar and sub-second, so
+ * the wait is normally enough.
  */
 const INGEST_BUSY_TIMEOUT_MS = 20_000;
 
@@ -150,20 +148,18 @@ const INGEST_BUSY_TIMEOUT_MS = 20_000;
 const INGEST_ATTEMPTS = 3;
 
 /**
- * Steps this run could not complete. Read at the end of {@link main}, which is
- * what turns a swallowed step into a non-zero exit — `launchctl list` records
- * that status, and it is the only signal a scheduler keeps.
+ * Steps this run could not complete. Read at the end of {@link main}, which
+ * turns a swallowed step into a non-zero exit — the status `launchctl list`
+ * records, and the only signal a scheduler keeps.
  */
 const failures: string[] = [];
 
 /**
- * One ingest pass, waiting out a lock rather than surrendering to it, and saying
- * so plainly when it still cannot run.
+ * One ingest pass, waiting out a lock rather than surrendering to it.
  *
- * Both callers keep their old shape — the run continues and the digest still
- * prints, because the substrate is a disposable view and a stale one is not worth
- * abandoning the rest of the night's work over. What changed is that the failure
- * is no longer invisible: it lands in {@link failures} and the process exits 1.
+ * A pass that still cannot run does not abort the run — the substrate is a
+ * disposable view, and a stale one is not worth the rest of the night's work. It
+ * lands in {@link failures} instead, which exits the process 1.
  */
 async function ingestWithRetry(logDir: string, label: string): Promise<IngestStats | null> {
   let last = '';
@@ -277,8 +273,7 @@ async function main(): Promise<void> {
   console.log('');
   console.log(renderSummary(await buildSummary(logDir, today, new Date(), resolveArchiveDir())));
 
-  // Last, so the digest above is printed either way, and loud, because the only
-  // reader is a log file nobody opens unless something says to.
+  // Last, so the digest above prints either way.
   if (failures.length > 0) {
     console.error('');
     console.error(`[maintain] run incomplete — ${plural(failures.length, 'step')} failed:`);

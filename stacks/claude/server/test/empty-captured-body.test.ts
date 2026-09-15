@@ -10,11 +10,9 @@ import { readRequestBodyParsed } from '../src/logs.js';
  * A zero-byte `.request.txt` is a real state on disk: the proxy used to write a
  * full triple for bodyless health probes aimed at its port, so ~1.8% of archived
  * captures hold nothing — 32 of 2,735 on 2026-07-28, 23 of 1,281 on 2026-09-11.
- *
- * Handed straight to `JSON.parse`, those read as `Unexpected end of JSON input`,
- * which is byte-identical to what a truncated or corrupt file says. These fix the
- * message that tells the two apart, on every path a body can be read from — the
- * live directory, an archived day, and a day whose bodies have been packed.
+ * Through `JSON.parse` those read as `Unexpected end of JSON input`, which is
+ * what a corrupt file says too. These pin the message that tells the two apart,
+ * on every path a body is read from.
  */
 
 const run = promisify(execFile);

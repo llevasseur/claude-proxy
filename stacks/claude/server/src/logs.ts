@@ -401,17 +401,14 @@ const REQUEST_FILE_RE = /^[0-9A-Za-z:_.-]+_anthropic$/;
 /**
  * Parse one captured body, naming an empty capture before `JSON.parse` can.
  *
- * A zero-byte `.request.txt` is a real state on disk rather than a hypothetical:
- * the proxy used to write a full triple for bodyless health probes aimed at its
- * port, so ~1.8% of archived captures hold nothing. Handed to `JSON.parse` that
- * surfaces as `Unexpected end of JSON input`, which is byte-identical to what a
- * truncated or corrupt file says — the one message that cannot distinguish "this
- * capture never held a body" from "this capture is damaged".
+ * A zero-byte `.request.txt` is a real state on disk: the proxy used to write a
+ * full triple for bodyless health probes aimed at its port, so ~1.8% of archived
+ * captures hold nothing. Through `JSON.parse` those read as `Unexpected end of
+ * JSON input` — the one message that cannot tell a capture that never held a body
+ * from a damaged one.
  *
- * The label is its own, so the server maps it deliberately rather than letting it
- * fall through to a 500. Applied at every read path — live, archived-loose and
- * unpacked-from-bundle — because the empty captures pre-date the bundles and are
- * now packed inside them.
+ * Applied at every read path — live, archived-loose and unpacked-from-bundle —
+ * because the empty captures pre-date the bundles and are now packed inside them.
  */
 function parseCapturedBody(text: string, file: string): JsonValue {
   if (text.trim() === '') throw new Error(`request body empty: ${file}`);

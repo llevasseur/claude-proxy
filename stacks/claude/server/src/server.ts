@@ -743,13 +743,8 @@ async function serveSse<T>(req: http.IncomingMessage, res: http.ServerResponse, 
  * than because something on this side broke. Three ways that happens: retention
  * evicted it, it was never captured, or the capture is there and holds nothing.
  *
- * The third is `request body empty`, and it is why this is a named predicate
- * instead of a condition repeated at each drill-down. The proxy wrote a full
- * triple for bodyless health probes aimed at its port, so ~1.8% of archived
- * captures are zero bytes; those used to reach `JSON.parse` and answer 500 with
- * `Unexpected end of JSON input`, indistinguishable from a corrupt file. All
- * three answer 404 — for a reader the outcome is identical — and each keeps its
- * own message, which is what makes the reason legible.
+ * All three answer 404 — for a reader the outcome is identical — and each keeps
+ * its own message. A corrupt capture is none of them and still throws.
  */
 function isAbsentBody(msg: string): boolean {
   return (

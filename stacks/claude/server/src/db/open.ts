@@ -941,9 +941,9 @@ export interface OpenOptions {
    *
    * **Opt-in, and the default of 0 is what the server wants.** `DatabaseSync` is
    * synchronous, so a busy wait inside the server blocks its event loop for the
-   * whole duration — a stalled dashboard, traded for an ingest pass that is
-   * retried on the next file event anyway. A second process that gets one shot
-   * per night is the opposite case, and that is who passes this.
+   * whole duration — a stalled dashboard, traded for an ingest pass the next file
+   * event retries anyway. A second process that gets one shot per night is the
+   * opposite case, and is the only caller that passes this.
    */
   busyTimeoutMs?: number;
 }

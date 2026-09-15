@@ -7,12 +7,11 @@ import { openDb } from '../src/db/open.js';
 /**
  * The nightly `maintain` run writes to the same database claude-server holds, and
  * the installed agent fires at 21:07 — when the server is normally up. WAL lets a
- * reader and a writer share the file; it does not make two writers concurrent, so
- * the run lost that race routinely and skipped its ingest passes.
+ * reader and a writer share the file; it does not make two writers concurrent.
  *
- * The wait is per handle rather than a property of the database, because the same
- * wait inside the server would block its synchronous event loop. These pin both
- * halves of that: the default stays 0, and the opt-in reaches SQLite.
+ * The wait is per handle, not a property of the database: the same wait inside
+ * the server would block its synchronous event loop. These pin both halves —
+ * the default stays 0, and the opt-in reaches SQLite.
  */
 
 async function logDir(): Promise<string> {

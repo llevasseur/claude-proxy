@@ -1119,8 +1119,7 @@ test('appendSession: a thread nothing spawned records no parentage at all', () =
 
 test('a bodyless request is never written down as a capture triple', () => {
   // Every zero-byte `.request.txt` on disk is this shape: a health probe aimed at
-  // the proxy's port, carrying no body to capture and no reason for a sidecar
-  // that prices an empty `{}`.
+  // the proxy's port, with no body to capture.
   assert.equal(isCapturable('/api/hello', Buffer.alloc(0)), false);
   assert.equal(isCapturable('/v1/messages', Buffer.alloc(0)), false);
 });
