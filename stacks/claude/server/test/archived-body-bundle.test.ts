@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
+import type { JsonValue } from '../src/json.js';
 import { locateRequestBody, readRequestBodyParsed } from '../src/logs.js';
 
 /**
@@ -56,7 +57,7 @@ async function writeSidecar(dir: string, file: string): Promise<void> {
  * job does — one `tar` stream through `zstd --long=27` — so the fixture is a
  * real bundle rather than a committed binary.
  */
-async function writeBundle(dayDir: string, members: Record<string, unknown>): Promise<void> {
+async function writeBundle(dayDir: string, members: Record<string, JsonValue>): Promise<void> {
   const stage = await mkdtemp(path.join(tmpdir(), 'bundle-stage-'));
   const names: string[] = [];
   for (const [file, body] of Object.entries(members)) {

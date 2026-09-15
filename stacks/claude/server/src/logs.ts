@@ -561,11 +561,12 @@ type BundleExtract =
 function runBundleExtract(bundlePath: string, member: string): Promise<BundleExtract> {
   return new Promise((resolve) => {
     const unzip = spawn('zstd', ['-dc', BUNDLE_LONG, bundlePath], { stdio: ['ignore', 'pipe', 'pipe'] });
-    const untar = spawn('tar', ['-xOf', '-', member], { stdio: ['pipe', 'pipe', 'pipe'] });
+    // `tar`'s stderr is dropped rather than collected: its only expected content
+    // is the "not found in archive" line, which the exit code already states.
+    const untar = spawn('tar', ['-xOf', '-', member], { stdio: ['pipe', 'pipe', 'ignore'] });
 
     const out: Buffer[] = [];
     let unzipErr = '';
-    let untarErr = '';
     let spawnErr = '';
     let unzipCode: number | null = null;
     let untarCode: number | null = null;
@@ -574,14 +575,15 @@ function runBundleExtract(bundlePath: string, member: string): Promise<BundleExt
     unzip.stdout.pipe(untar.stdin);
     // `tar` can exit before `zstd` has finished writing; that closes the pipe
     // under it, and the EPIPE this raises is expected rather than a failure.
-    unzip.stdout.on('error', () => {});
-    untar.stdin.on('error', () => {});
+    unzip.stdout.on('error', () => {
+      // Swallowed deliberately — the exit codes below are what decide the result.
+    });
+    untar.stdin.on('error', () => {
+      // Swallowed deliberately, for the same reason as the stream above.
+    });
 
     unzip.stderr.on('data', (c: Buffer) => {
       unzipErr += c.toString();
-    });
-    untar.stderr.on('data', (c: Buffer) => {
-      untarErr += c.toString();
     });
     untar.stdout.on('data', (c: Buffer) => {
       out.push(c);
