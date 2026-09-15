@@ -1,17 +1,58 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  Nightly log lifecycle for claude-proxy: archive yesterday's logs, evict bodies
-  past RETENTION_DAYS, print the digest. Replaces com.llevasseur.claude-usage-summary,
-  whose pruner deleted whole archive/<date>/ directories — sidecars included.
+  Nightly log lifecycle for claude-proxy: archive yesterday's logs, print the digest,
+  then pack each archived day's renderings and bodies into zstd bundles. Replaces
+  com.llevasseur.claude-usage-summary, whose pruner deleted whole archive/<date>/
+  directories — sidecars included.
 
-  Install (this file is the reviewable copy; ~/Library/LaunchAgents/ holds the live one):
+  This file is the reviewable copy of the agent installed at
+  ~/Library/LaunchAgents/com.llevasseur.claude-proxy.maintain.plist. It is reviewable
+  because it is accurate; a plist that has drifted from the installed one is worse than
+  no plist, because installing it looks like adopting the working configuration.
 
-      cp scripts/com.llevasseur.claude-proxy.maintain.plist ~/Library/LaunchAgents/
-      launchctl unload ~/Library/LaunchAgents/com.llevasseur.claude-proxy.maintain.plist 2>/dev/null
-      launchctl load  ~/Library/LaunchAgents/com.llevasseur.claude-proxy.maintain.plist
+  IT DEPENDS ON ONE FILE THIS REPOSITORY DOES NOT SHIP.
 
-  Dry-run it by hand any time with `pnpm --filter @agent-proxy/claude-server maintain` (no --apply).
+  ProgramArguments runs ~/.claude-usage/bin/maintain-and-compress.sh, which is device
+  configuration and deliberately outside the repo. It does two things in one job:
+
+    1. `pnpm --filter @agent-proxy/claude-server maintain --apply`, with LOG_DIR,
+       RETENTION_DAYS and TIMEZONE exported by the wrapper rather than set below, so
+       they live in one place instead of two that can disagree.
+    2. Packs each archived day older than BODIES_MIN_AGE into archive/<day>/
+       renderings.tar.zst and bodies.tar.zst — one tar stream through `zstd --long=27`
+       each, which is the exact form the server's read path unpacks.
+
+  The two halves are one job rather than two because archiving frees nothing on its own;
+  as separate agents they could drift apart or overlap on the same day directory.
+
+  Write that wrapper before installing this, or replace ProgramArguments with the direct
+  invocation of step 1 and accept that bodies are never compressed:
+
+      /Users/llevasseur/Library/pnpm/bin/pnpm --filter @agent-proxy/claude-server maintain --apply
+
+  RETENTION_DAYS is "never" here, set by the wrapper. Step 2 of maintain evicts .md and
+  .request.txt bodies past the window; "never" turns that step off and leaves archiving
+  and the digest running unchanged. Bodies are kept and compressed instead, which is the
+  whole point of the wrapper — so a RETENTION_DAYS of 30 would delete exactly what the
+  second half of the same job exists to keep.
+
+  Install:
+
+      cp scripts/com.llevasseur.claude-proxy.maintain.plist \
+         ~/Library/LaunchAgents/com.llevasseur.claude-proxy.maintain.plist
+      launchctl bootout   gui/$(id -u)/com.llevasseur.claude-proxy.maintain 2>/dev/null
+      launchctl bootstrap gui/$(id -u) \
+         ~/Library/LaunchAgents/com.llevasseur.claude-proxy.maintain.plist
+
+  Dry-run maintain by hand any time (no --apply):
+
+      LOG_DIR=~/Documents/ghub/personal/claude-proxy/stacks/claude/logs \
+      RETENTION_DAYS=never pnpm --filter @agent-proxy/claude-server maintain
+
+  `launchctl list com.llevasseur.claude-proxy.maintain` reports the last exit status, and
+  maintain now exits non-zero when an ingest pass could not run — so a night the database
+  stayed locked is visible there rather than only in the log file.
 -->
 <plist version="1.0">
 <dict>
@@ -20,36 +61,31 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/llevasseur/Library/pnpm/bin/pnpm</string>
-        <string>--filter</string>
-        <string>@agent-proxy/claude-server</string>
-        <string>maintain</string>
-        <string>--apply</string>
+        <string>/bin/bash</string>
+        <string>/Users/llevasseur/.claude-usage/bin/maintain-and-compress.sh</string>
     </array>
 
     <key>WorkingDirectory</key>
-    <string>/Users/llevasseur/Documents/ghub/claude-proxy</string>
+    <string>/Users/llevasseur/Documents/ghub/personal/claude-proxy</string>
 
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
         <string>/Users/llevasseur/Library/pnpm/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
-        <!-- LOG_DIR is the variable the CLI reads (resolveLogDir in server/src/logs.ts). -->
-        <key>LOG_DIR</key>
-        <string>/Users/llevasseur/Documents/ghub/claude-proxy/logs</string>
-        <key>RETENTION_DAYS</key>
-        <string>30</string>
-        <key>TIMEZONE</key>
-        <string>America/Toronto</string>
+        <!-- LOG_DIR (resolveLogDir in stacks/claude/server/src/logs.ts), RETENTION_DAYS
+             and TIMEZONE are exported by the wrapper. Only the days-before-bodies-are-
+             packed knob is set here, because nothing else reads it. -->
+        <key>BODIES_MIN_AGE</key>
+        <string>7</string>
     </dict>
 
-    <!-- 21:00 daily — the slot the replaced job used. -->
+    <!-- 21:07 daily. Off the hour so it does not land with every other :00 job. -->
     <key>StartCalendarInterval</key>
     <dict>
         <key>Hour</key>
         <integer>21</integer>
         <key>Minute</key>
-        <integer>0</integer>
+        <integer>7</integer>
     </dict>
 
     <key>RunAtLoad</key>
