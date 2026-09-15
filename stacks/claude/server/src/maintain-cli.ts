@@ -16,6 +16,9 @@
  */
 import { buildSummary } from './api.js';
 import { resolveArchiveDir } from './archive.js';
+// Type-only, so it is erased: the module itself stays behind the dynamic import
+// in `ingestWithRetry`, which is what keeps `node:sqlite` off a dry run's path.
+import type { IngestStats } from './db/ingest.js';
 import { errorMessage } from './errors.js';
 import { resolveLogDir } from './logs.js';
 import {
@@ -132,6 +135,55 @@ async function reconcileRuns(logDir: string): Promise<void> {
 }
 
 /**
+ * How long one ingest attempt waits for whoever else holds the database before
+ * SQLite answers `database is locked`.
+ *
+ * The other holder is claude-server, and it is normally *up* when this job fires:
+ * the installed agent runs at 21:07. So losing that race was the common case
+ * rather than the exception, and both ingest passes below printed one line and
+ * carried on as though the run were clean. Its writes are per-sidecar and
+ * sub-second, so waiting is what the wait is for.
+ */
+const INGEST_BUSY_TIMEOUT_MS = 20_000;
+
+/** Attempts per ingest pass. The timeout above is the wait inside each one. */
+const INGEST_ATTEMPTS = 3;
+
+/**
+ * Steps this run could not complete. Read at the end of {@link main}, which is
+ * what turns a swallowed step into a non-zero exit — `launchctl list` records
+ * that status, and it is the only signal a scheduler keeps.
+ */
+const failures: string[] = [];
+
+/**
+ * One ingest pass, waiting out a lock rather than surrendering to it, and saying
+ * so plainly when it still cannot run.
+ *
+ * Both callers keep their old shape — the run continues and the digest still
+ * prints, because the substrate is a disposable view and a stale one is not worth
+ * abandoning the rest of the night's work over. What changed is that the failure
+ * is no longer invisible: it lands in {@link failures} and the process exits 1.
+ */
+async function ingestWithRetry(logDir: string, label: string): Promise<IngestStats | null> {
+  let last = '';
+  for (let attempt = 1; attempt <= INGEST_ATTEMPTS; attempt += 1) {
+    try {
+      const { ingestOnce } = await import('./db/runtime.js');
+      return await ingestOnce(logDir, { busyTimeoutMs: INGEST_BUSY_TIMEOUT_MS });
+    } catch (cause) {
+      last = errorMessage(cause);
+      if (attempt < INGEST_ATTEMPTS) {
+        console.error(`[maintain] ${label}: attempt ${attempt} of ${INGEST_ATTEMPTS} failed (${last}) — retrying`);
+      }
+    }
+  }
+  failures.push(`${label} — ${last}`);
+  console.error(`[maintain] FAILED: ${label} did not run after ${INGEST_ATTEMPTS} attempts: ${last}`);
+  return null;
+}
+
+/**
  * Extract the derivatives the dashboard reads out of a body, while the bodies are
  * all still here. Must run *before* the evict phase below deletes them, for the
  * same reason `reconcileRuns` must run before archiving: the step consumes
@@ -139,17 +191,13 @@ async function reconcileRuns(logDir: string): Promise<void> {
  *
  * An ordinary ingest pass — the watcher and `pnpm --filter @agent-proxy/claude-server ingest` run the
  * same one, so this is usually a no-op that finds nothing pending, and having it
- * here is what makes the ordering a guarantee. Skipped on a dry run, and never
- * fatal: the substrate is a disposable view.
+ * here is what makes the ordering a guarantee. Skipped on a dry run. A pass that
+ * cannot run does not abort the night — it exits the run non-zero instead; see
+ * {@link ingestWithRetry}.
  */
 async function deriveBeforeEvict(logDir: string): Promise<void> {
-  try {
-    const { ingestOnce } = await import('./db/runtime.js');
-    const stats = await ingestOnce(logDir);
-    if (stats.derived > 0) console.log(`[maintain] derived ${plural(stats.derived, 'body')} before eviction`);
-  } catch (cause) {
-    console.error(`[maintain] body derivation skipped: ${errorMessage(cause)}`);
-  }
+  const stats = await ingestWithRetry(logDir, 'body derivation');
+  if (stats && stats.derived > 0) console.log(`[maintain] derived ${plural(stats.derived, 'body')} before eviction`);
 }
 
 /**
@@ -159,18 +207,13 @@ async function deriveBeforeEvict(logDir: string): Promise<void> {
  * eviction inside `archive/<day>/` fires no watcher event — the server's watch
  * is not recursive. Without a pass on this side, `request_path` keeps pointing
  * at bodies this run removed. `/api/skim/trend` sums that column, so a stale one
- * is a wrong answer rather than merely a slow one. Never fatal: the substrate is
- * a disposable view.
+ * is a wrong answer rather than merely a slow one — which is why a pass that
+ * cannot run exits the process non-zero; see {@link ingestWithRetry}.
  */
 async function reingestAfterEvict(logDir: string): Promise<void> {
-  try {
-    const { ingestOnce } = await import('./db/runtime.js');
-    const stats = await ingestOnce(logDir);
-    if (stats.dirs > 0) {
-      console.log(`[maintain] re-ingested ${plural(stats.dirs, 'directory', 'directories')} after eviction`);
-    }
-  } catch (cause) {
-    console.error(`[maintain] post-eviction ingest skipped: ${errorMessage(cause)}`);
+  const stats = await ingestWithRetry(logDir, 'post-eviction ingest');
+  if (stats && stats.dirs > 0) {
+    console.log(`[maintain] re-ingested ${plural(stats.dirs, 'directory', 'directories')} after eviction`);
   }
 }
 
@@ -233,6 +276,15 @@ async function main(): Promise<void> {
 
   console.log('');
   console.log(renderSummary(await buildSummary(logDir, today, new Date(), resolveArchiveDir())));
+
+  // Last, so the digest above is printed either way, and loud, because the only
+  // reader is a log file nobody opens unless something says to.
+  if (failures.length > 0) {
+    console.error('');
+    console.error(`[maintain] run incomplete — ${plural(failures.length, 'step')} failed:`);
+    for (const f of failures) console.error(`[maintain]   ${f}`);
+    process.exitCode = 1;
+  }
 }
 
 main().catch((cause: unknown) => {

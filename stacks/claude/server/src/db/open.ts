@@ -934,16 +934,37 @@ CREATE INDEX IF NOT EXISTS concept_item_kind_idx ON concept_item(kind, item);
 DELETE FROM file_watermark WHERE path = 'concepts.jsonl';
 `;
 
+export interface OpenOptions {
+  /**
+   * How long a write may wait for another process's lock before SQLite gives up
+   * with `database is locked`, in milliseconds.
+   *
+   * **Opt-in, and the default of 0 is what the server wants.** `DatabaseSync` is
+   * synchronous, so a busy wait inside the server blocks its event loop for the
+   * whole duration — a stalled dashboard, traded for an ingest pass that is
+   * retried on the next file event anyway. A second process that gets one shot
+   * per night is the opposite case, and that is who passes this.
+   */
+  busyTimeoutMs?: number;
+}
+
 /**
  * Open (creating if needed) the substrate for `logDir` in WAL mode. WAL lets the
  * server read while an ingest pass writes, which is the normal state: the
  * watcher ingests whenever the proxy drops a new sidecar.
+ *
+ * WAL does not make two *writers* concurrent, which is why {@link OpenOptions}
+ * exists: the nightly maintain run writes while the server is up and holding
+ * this same file.
  */
-export function openDb(logDir: string): DatabaseSync {
+export function openDb(logDir: string, opts: OpenOptions = {}): DatabaseSync {
   const db = new sqlite.DatabaseSync(resolveDbPath(logDir));
   db.exec('PRAGMA journal_mode = WAL');
   db.exec('PRAGMA synchronous = NORMAL');
   db.exec('PRAGMA foreign_keys = ON');
+  // Before `migrate`, which writes: a schema step is exactly the statement that
+  // would otherwise lose the race against a running server.
+  if (opts.busyTimeoutMs) db.exec(`PRAGMA busy_timeout = ${Math.floor(opts.busyTimeoutMs)}`);
   migrate(db);
   return db;
 }
