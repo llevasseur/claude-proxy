@@ -1651,14 +1651,20 @@ export interface EvictedBodyResponse {
 
 /**
  * Turn a location into the evicted response, or throw for `missing` (a 404).
- * Returns `null` when the body is present and the caller should just read it.
+ * Returns `null` when the body is readable and the caller should just read it.
+ *
+ * `compressed` counts as readable: the body is packed into its day's bundle,
+ * not gone, and `readRequestBody` unpacks it. This is a match on the readable
+ * statuses rather than a fall-through for the same reason the union documents —
+ * treating "not present, not missing" as evicted would report a body that
+ * exists as permanently gone, on every drill-down at once.
  */
 async function evictedOr404(
   logDir: string,
   file: string,
   location: RequestBodyLocation,
 ): Promise<EvictedBodyResponse | null> {
-  if (location.status === 'present') return null;
+  if (location.status === 'present' || location.status === 'compressed') return null;
   if (location.status === 'missing') throw new Error(`request file not found: ${file}`);
   return {
     file,
