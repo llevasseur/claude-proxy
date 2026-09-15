@@ -24,6 +24,7 @@ Add one with `okq new feature "<title>"`.
 | Device system prompt | [device-system-prompt.md](device-system-prompt.md) |
 | Ideas ledger | [ideas-ledger.md](ideas-ledger.md) |
 | Internet usage meter | [internet-usage-meter.md](internet-usage-meter.md) |
+| Keep a chat warm | [keep-a-chat-warm.md](keep-a-chat-warm.md) |
 | Live session graph | [live-session-graph.md](live-session-graph.md) |
 | Message drill-down | [message-drill-down.md](message-drill-down.md) |
 | Operator notes | [operator-notes.md](operator-notes.md) |
