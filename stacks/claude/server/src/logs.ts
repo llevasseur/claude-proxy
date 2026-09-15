@@ -436,12 +436,11 @@ export async function readRequestBodyParsed(logDir: string, file: string): Promi
     return JSON.parse(await readFile(location.path, 'utf8')) as JsonValue;
   }
   if (location.status === 'compressed') {
-    const packed = await extractBundleMember(location.path, location.member, file);
-    // An intact bundle that does not hold the member is an incomplete archive.
-    // It throws rather than answering `missing`, because 404 would report the
-    // request as never captured and quietly hide the gap; the sidecar beside
-    // the bundle says the body was there when the day was packed.
-    if (packed === null) throw new Error(`request body missing from bundle: ${file}`);
+    const packed = await readBundleMember(location.path, location.member, file, 'read');
+    // `locateRequestBody` already confirmed the member, so reaching here means
+    // the bundle was rewritten between that check and this read. Answer it as
+    // the eviction it now is rather than inventing a third outcome.
+    if (packed === null) throw new Error(`request body evicted: ${file}`);
     // SAFETY: a packed body is the same captured text as the loose one above.
     // Text that will not parse throws out of here, exactly as it does there.
     return JSON.parse(packed) as JsonValue;
@@ -483,8 +482,10 @@ async function exists(file: string): Promise<boolean> {
  *   permanent, not a fault.
  * - `missing` — neither file is there. The only case worth a 404.
  *
- * `compressed` ranks between the two: a loose body still wins, and `evicted`
- * stays the answer only when neither a loose body nor a bundle is there. Any
+ * `compressed` ranks between the two: a loose body still wins, and it is only
+ * returned once the bundle has been confirmed to hold this member — a day's
+ * bundle covers every capture in that day, so a capture evicted before the day
+ * was packed is still `evicted`, not packed. Any
  * consumer that switches on this union must handle `compressed` explicitly —
  * a fall-through that treats "not present, not missing" as evicted reports a
  * body that exists as permanently gone.
@@ -525,13 +526,18 @@ export async function locateRequestBody(logDir: string, file: string): Promise<R
   // Deliberately after the loop, never inside it: a loose body in a *later*
   // candidate dir still outranks a bundle found in an earlier one.
   if (bundle) {
-    return {
-      status: 'compressed',
-      dir: bundle.dir,
-      path: path.join(bundle.dir, BODY_BUNDLE),
-      member: `${file}.request.txt`,
-      day: bundle.day,
-    };
+    const bundlePath = path.join(bundle.dir, BODY_BUNDLE);
+    const member = `${file}.request.txt`;
+    // Membership is resolved here rather than left to the read, and it costs a
+    // decompress. **A day has one bundle covering every capture in it**, so the
+    // bundle merely being there says nothing about this file: a body evicted by
+    // an earlier retention pass was already gone when the day was packed, and
+    // its sidecar is retained forever either way. Reporting that as anything but
+    // `evicted` would turn a normal terminal state into a fault on the one
+    // status the drill-downs render a real answer for.
+    if (await bundleHasMember(bundlePath, member, file)) {
+      return { status: 'compressed', dir: bundle.dir, path: bundlePath, member, day: bundle.day };
+    }
   }
   if (sidecar) return { status: 'evicted', dir: sidecar.dir, day: sidecar.day };
   return { status: 'missing' };
@@ -550,6 +556,13 @@ type BundleExtract =
   | { status: 'unreadable'; detail: string };
 
 /**
+ * `read` writes the member to stdout; `probe` only asks whether it is in there.
+ * Both decompress the whole frame — `tar` cannot seek inside a zstd stream — so
+ * `probe` saves the body's bytes rather than the decompression.
+ */
+type BundleMode = 'read' | 'probe';
+
+/**
  * Stream one member out of a bundle: `zstd -dc` decompresses into `tar -xO`,
  * which writes that member to stdout and nothing to disk. The whole day is
  * never unpacked, and no temp directory is involved.
@@ -558,12 +571,13 @@ type BundleExtract =
  * and the Claude CLI, and both `tar` and `zstd` are the tools that wrote the
  * bundle in the first place.
  */
-function runBundleExtract(bundlePath: string, member: string): Promise<BundleExtract> {
+function runBundleExtract(bundlePath: string, member: string, mode: BundleMode): Promise<BundleExtract> {
   return new Promise((resolve) => {
     const unzip = spawn('zstd', ['-dc', BUNDLE_LONG, bundlePath], { stdio: ['ignore', 'pipe', 'pipe'] });
     // `tar`'s stderr is dropped rather than collected: its only expected content
     // is the "not found in archive" line, which the exit code already states.
-    const untar = spawn('tar', ['-xOf', '-', member], { stdio: ['pipe', 'pipe', 'ignore'] });
+    const tarArgs = mode === 'read' ? ['-xOf', '-', member] : ['-tf', '-', member];
+    const untar = spawn('tar', tarArgs, { stdio: ['pipe', 'pipe', 'ignore'] });
 
     const out: Buffer[] = [];
     let unzipErr = '';
@@ -630,17 +644,23 @@ function runBundleExtract(bundlePath: string, member: string): Promise<BundleExt
 }
 
 /**
- * One member's text, tried under both the bare name and the `./`-prefixed one
- * `tar` writes when it is handed a directory to walk. Returns `null` only when
- * the bundle is intact and genuinely does not hold it.
+ * One member, tried under both the bare name and the `./`-prefixed one `tar`
+ * writes when it is handed a directory to walk. Returns `null` only when the
+ * bundle is intact and genuinely does not hold it.
  *
  * Throws when the bundle itself cannot be read, so a corrupt archive can never
- * be mistaken for an evicted body.
+ * be mistaken for an evicted body — those are opposite answers, one a fault and
+ * one a normal terminal state.
  */
-async function extractBundleMember(bundlePath: string, member: string, file: string): Promise<string | null> {
+async function readBundleMember(
+  bundlePath: string,
+  member: string,
+  file: string,
+  mode: BundleMode,
+): Promise<string | null> {
   let unreadable: string | null = null;
   for (const name of [member, `./${member}`]) {
-    const result = await runBundleExtract(bundlePath, name);
+    const result = await runBundleExtract(bundlePath, name, mode);
     if (result.status === 'ok') return result.text;
     if (result.status === 'unreadable') unreadable = result.detail;
   }
@@ -648,6 +668,11 @@ async function extractBundleMember(bundlePath: string, member: string, file: str
     throw new Error(`request body bundle unreadable: ${file}: ${unreadable}`);
   }
   return null;
+}
+
+/** Whether an intact bundle holds this member at all. Throws if it is corrupt. */
+async function bundleHasMember(bundlePath: string, member: string, file: string): Promise<boolean> {
+  return (await readBundleMember(bundlePath, member, file, 'probe')) !== null;
 }
 
 /**

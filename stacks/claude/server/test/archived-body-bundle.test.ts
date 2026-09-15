@@ -95,13 +95,26 @@ describe.skipIf(!HAS_TOOLS)('archived request bodies packed into a per-day bundl
     expect(body).toEqual({ messages: ['loose'] });
   });
 
-  it('throws rather than answering an empty body when the bundle omits the member', async () => {
+  it('still reports evicted for a capture the packed day does not hold', async () => {
     const { logDir, dayDir } = await corpus();
     await writeSidecar(dayDir, FILE);
-    // A bundle that holds some other capture from the same day.
+    // A day has one bundle covering every capture in it, so this one being there
+    // says nothing about FILE: its body was already evicted when the day was
+    // packed, which is a normal terminal state rather than an incomplete archive.
     await writeBundle(dayDir, { '2026-07-20T09-00-00-000_anthropic': { messages: ['elsewhere'] } });
 
-    await expect(readRequestBodyParsed(logDir, FILE)).rejects.toThrow(/request body missing from bundle/);
+    const location = await locateRequestBody(logDir, FILE);
+    expect(location.status).toBe('evicted');
+
+    await expect(readRequestBodyParsed(logDir, FILE)).rejects.toThrow(/request body evicted/);
+  });
+
+  it('reports missing, not evicted, when a packed day holds neither body nor sidecar', async () => {
+    const { logDir, dayDir } = await corpus();
+    await writeBundle(dayDir, { '2026-07-20T09-00-00-000_anthropic': { messages: ['elsewhere'] } });
+
+    const location = await locateRequestBody(logDir, FILE);
+    expect(location.status).toBe('missing');
   });
 
   it('throws rather than answering an empty body when the bundle will not decompress', async () => {
