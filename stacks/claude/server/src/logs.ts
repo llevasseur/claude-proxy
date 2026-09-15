@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import { access, readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +11,25 @@ export { shiftDay };
 
 /** The sidecar suffix, which retention keeps forever. */
 const AUDIT_SUFFIX = '.audit.json';
+
+/**
+ * The per-day bundle an archived day's `.request.txt` bodies are packed into —
+ * one `tar` stream through `zstd --long=27`, beside the sidecars.
+ *
+ * It sits *inside* `archive/<day>/`: every archive reader globs `*.audit.json`
+ * off a `readdir` and `archive.ts` loads `<day>/digest.json` by path, so packing
+ * the day directory itself would make every archived day read as empty.
+ *
+ * One bundle rather than per-file compression, because each capture resends the
+ * conversation so far — the redundancy is across the members, not inside them.
+ */
+const BODY_BUNDLE = 'bodies.tar.zst';
+
+/**
+ * The zstd window the bundle is written with, restated on every read: zstd
+ * refuses a frame whose window exceeds the decoder's default.
+ */
+const BUNDLE_LONG = '--long=27';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url)); // server/src
 
@@ -405,11 +425,21 @@ export async function readRequestBodyParsed(logDir: string, file: string): Promi
     return JSON.parse(text) as JsonValue;
   }
 
-  // Slow path: archived, evicted, or never captured.
+  // Slow path: archived, packed, evicted, or never captured.
   const location = await locateRequestBody(logDir, file);
   if (location.status === 'present') {
     // SAFETY: the archived copy is the same captured body as the live one above.
     return JSON.parse(await readFile(location.path, 'utf8')) as JsonValue;
+  }
+  if (location.status === 'compressed') {
+    const packed = await readBundleMember(location.path, location.member, file, 'read');
+    // `locateRequestBody` already confirmed the member, so reaching here means
+    // the bundle was rewritten between that check and this read. Answer it as
+    // the eviction it now is rather than inventing a third outcome.
+    if (packed === null) throw new Error(`request body evicted: ${file}`);
+    // SAFETY: a packed body is the same captured text as the loose one above.
+    // Text that will not parse throws out of here, exactly as it does there.
+    return JSON.parse(packed) as JsonValue;
   }
   if (location.status === 'evicted') throw new Error(`request body evicted: ${file}`);
   throw new Error(`request file not found: ${file}`);
@@ -441,12 +471,24 @@ async function exists(file: string): Promise<boolean> {
  * Where one captured request's files are, and what state the body is in.
  *
  * - `present` — the body is on disk, live or in its archived day.
+ * - `compressed` — the body is packed into its day's {@link BODY_BUNDLE}. Still
+ *   readable, and callers see no difference from `present` once
+ *   {@link readRequestBodyParsed} has unpacked the member.
  * - `evicted` — the sidecar is retained but the body is gone. Expected and
  *   permanent, not a fault.
  * - `missing` — neither file is there. The only case worth a 404.
+ *
+ * `compressed` ranks between the two: a loose body still wins, and it is only
+ * returned once the bundle has been confirmed to hold this member — a day's
+ * bundle covers every capture in that day, so a capture evicted before the day
+ * was packed is still `evicted`, not packed. Any
+ * consumer that switches on this union must handle `compressed` explicitly —
+ * a fall-through that treats "not present, not missing" as evicted reports a
+ * body that exists as permanently gone.
  */
 export type RequestBodyLocation =
   | { status: 'present'; dir: string; path: string }
+  | { status: 'compressed'; dir: string; path: string; member: string; day: string | null }
   | { status: 'evicted'; dir: string; day: string | null }
   | { status: 'missing' };
 
@@ -468,15 +510,157 @@ function requestDirs(logDir: string, file: string): { dir: string; day: string |
 export async function locateRequestBody(logDir: string, file: string): Promise<RequestBodyLocation> {
   liveRequestPath(logDir, file); // validates `file`; the path itself is re-derived below
   let sidecar: { dir: string; day: string | null } | null = null;
+  let bundle: { dir: string; day: string | null } | null = null;
 
   for (const candidate of requestDirs(logDir, file)) {
     const body = path.join(candidate.dir, `${file}.request.txt`);
     if (await exists(body)) return { status: 'present', dir: candidate.dir, path: body };
+    if (!bundle && (await exists(path.join(candidate.dir, BODY_BUNDLE)))) bundle = candidate;
     if (!sidecar && (await exists(path.join(candidate.dir, `${file}${AUDIT_SUFFIX}`)))) sidecar = candidate;
   }
 
+  // Deliberately after the loop, never inside it: a loose body in a *later*
+  // candidate dir still outranks a bundle found in an earlier one.
+  if (bundle) {
+    const bundlePath = path.join(bundle.dir, BODY_BUNDLE);
+    const member = `${file}.request.txt`;
+    // A day has one bundle covering every capture in it, so the bundle being
+    // there says nothing about this file. Membership is resolved here, at the
+    // cost of a decompress, to keep a body evicted before the day was packed
+    // reading as `evicted` rather than as a fault.
+    if (await bundleHasMember(bundlePath, member, file)) {
+      return { status: 'compressed', dir: bundle.dir, path: bundlePath, member, day: bundle.day };
+    }
+  }
   if (sidecar) return { status: 'evicted', dir: sidecar.dir, day: sidecar.day };
   return { status: 'missing' };
+}
+
+/**
+ * What one attempt at unpacking a member came back with.
+ *
+ * `no-member` and `unreadable` are kept apart because they mean different
+ * things operationally: the first is an incomplete bundle, the second a corrupt
+ * or unreadable one. Neither may ever surface as an empty body.
+ */
+type BundleExtract =
+  | { status: 'ok'; text: string }
+  | { status: 'no-member' }
+  | { status: 'unreadable'; detail: string };
+
+/**
+ * `read` writes the member to stdout; `probe` only asks whether it is in there.
+ * Both decompress the whole frame — `tar` cannot seek inside a zstd stream — so
+ * `probe` saves the body's bytes rather than the decompression.
+ */
+type BundleMode = 'read' | 'probe';
+
+/**
+ * Stream one member out of a bundle: `zstd -dc` decompresses into `tar`, which
+ * writes it to stdout. The day is never unpacked and no temp directory is used.
+ */
+function runBundleExtract(bundlePath: string, member: string, mode: BundleMode): Promise<BundleExtract> {
+  return new Promise((resolve) => {
+    const unzip = spawn('zstd', ['-dc', BUNDLE_LONG, bundlePath], { stdio: ['ignore', 'pipe', 'pipe'] });
+    // `tar`'s stderr is dropped rather than collected: its only expected content
+    // is the "not found in archive" line, which the exit code already states.
+    const tarArgs = mode === 'read' ? ['-xOf', '-', member] : ['-tf', '-', member];
+    const untar = spawn('tar', tarArgs, { stdio: ['pipe', 'pipe', 'ignore'] });
+
+    const out: Buffer[] = [];
+    let unzipErr = '';
+    let spawnErr = '';
+    let unzipCode: number | null = null;
+    let untarCode: number | null = null;
+    let settled = false;
+
+    unzip.stdout.pipe(untar.stdin);
+    // `tar` can exit before `zstd` has finished writing; that closes the pipe
+    // under it, and the EPIPE this raises is expected rather than a failure.
+    unzip.stdout.on('error', () => {
+      // Swallowed deliberately — the exit codes below are what decide the result.
+    });
+    untar.stdin.on('error', () => {
+      // Swallowed deliberately, for the same reason as the stream above.
+    });
+
+    unzip.stderr.on('data', (c: Buffer) => {
+      unzipErr += c.toString();
+    });
+    untar.stdout.on('data', (c: Buffer) => {
+      out.push(c);
+    });
+
+    const fail = (detail: string) => {
+      if (settled) return;
+      settled = true;
+      resolve({ status: 'unreadable', detail });
+    };
+    unzip.on('error', (e: Error) => {
+      spawnErr = e.message;
+      fail(`zstd could not be run: ${e.message}`);
+    });
+    untar.on('error', (e: Error) => {
+      spawnErr = e.message;
+      fail(`tar could not be run: ${e.message}`);
+    });
+
+    const done = () => {
+      if (settled || unzipCode === null || untarCode === null) return;
+      settled = true;
+      if (unzipCode !== 0) {
+        resolve({ status: 'unreadable', detail: unzipErr.trim() || spawnErr || `zstd exited ${unzipCode}` });
+        return;
+      }
+      // zstd read the frame fine, so a non-zero `tar` means it never found the
+      // name — an incomplete bundle, not a corrupt one.
+      if (untarCode !== 0) {
+        resolve({ status: 'no-member' });
+        return;
+      }
+      resolve({ status: 'ok', text: Buffer.concat(out).toString('utf8') });
+    };
+    unzip.on('close', (code) => {
+      unzipCode = code ?? 0;
+      done();
+    });
+    untar.on('close', (code) => {
+      untarCode = code ?? 0;
+      done();
+    });
+  });
+}
+
+/**
+ * One member, tried under both the bare name and the `./`-prefixed one `tar`
+ * writes when it is handed a directory to walk. Returns `null` only when the
+ * bundle is intact and genuinely does not hold it.
+ *
+ * Throws when the bundle itself cannot be read, so a corrupt archive can never
+ * be mistaken for an evicted body — those are opposite answers, one a fault and
+ * one a normal terminal state.
+ */
+async function readBundleMember(
+  bundlePath: string,
+  member: string,
+  file: string,
+  mode: BundleMode,
+): Promise<string | null> {
+  let unreadable: string | null = null;
+  for (const name of [member, `./${member}`]) {
+    const result = await runBundleExtract(bundlePath, name, mode);
+    if (result.status === 'ok') return result.text;
+    if (result.status === 'unreadable') unreadable = result.detail;
+  }
+  if (unreadable !== null) {
+    throw new Error(`request body bundle unreadable: ${file}: ${unreadable}`);
+  }
+  return null;
+}
+
+/** Whether an intact bundle holds this member at all. Throws if it is corrupt. */
+async function bundleHasMember(bundlePath: string, member: string, file: string): Promise<boolean> {
+  return (await readBundleMember(bundlePath, member, file, 'probe')) !== null;
 }
 
 /**
