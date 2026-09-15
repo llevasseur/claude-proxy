@@ -1654,10 +1654,9 @@ export interface EvictedBodyResponse {
  * Returns `null` when the body is readable and the caller should just read it.
  *
  * `compressed` counts as readable: the body is packed into its day's bundle,
- * not gone, and `readRequestBody` unpacks it. This is a match on the readable
- * statuses rather than a fall-through for the same reason the union documents —
- * treating "not present, not missing" as evicted would report a body that
- * exists as permanently gone, on every drill-down at once.
+ * not gone, and `readRequestBody` unpacks it. Matching the readable statuses
+ * rather than falling through is what stops a packed body being reported as
+ * permanently gone on every drill-down at once.
  */
 async function evictedOr404(
   logDir: string,

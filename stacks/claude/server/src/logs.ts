@@ -14,24 +14,20 @@ const AUDIT_SUFFIX = '.audit.json';
 
 /**
  * The per-day bundle an archived day's `.request.txt` bodies are packed into —
- * one `tar` stream through `zstd --long=27`, written beside the sidecars rather
- * than in place of them.
+ * one `tar` stream through `zstd --long=27`, beside the sidecars.
  *
- * It sits *inside* `archive/<day>/` on purpose. Every archive reader here globs
- * `*.audit.json` off a `readdir`, and `archive.ts` loads `<day>/digest.json` by
- * path, so a file under any other name is invisible to both — packing the day
- * directory itself would instead make every archived day read as empty.
+ * It sits *inside* `archive/<day>/`: every archive reader globs `*.audit.json`
+ * off a `readdir` and `archive.ts` loads `<day>/digest.json` by path, so packing
+ * the day directory itself would make every archived day read as empty.
  *
- * A large window is the whole point: each capture resends the conversation so
- * far, so the redundancy lies across the members rather than inside any one of
- * them, and per-file compression cannot reach it.
+ * One bundle rather than per-file compression, because each capture resends the
+ * conversation so far — the redundancy is across the members, not inside them.
  */
 const BODY_BUNDLE = 'bodies.tar.zst';
 
 /**
- * The zstd window the bundle is written with, restated on every read. zstd
- * refuses a frame whose window exceeds the decoder's default, so omitting it
- * turns a readable bundle into "Frame requires too much memory for decoding".
+ * The zstd window the bundle is written with, restated on every read: zstd
+ * refuses a frame whose window exceeds the decoder's default.
  */
 const BUNDLE_LONG = '--long=27';
 
@@ -528,13 +524,10 @@ export async function locateRequestBody(logDir: string, file: string): Promise<R
   if (bundle) {
     const bundlePath = path.join(bundle.dir, BODY_BUNDLE);
     const member = `${file}.request.txt`;
-    // Membership is resolved here rather than left to the read, and it costs a
-    // decompress. **A day has one bundle covering every capture in it**, so the
-    // bundle merely being there says nothing about this file: a body evicted by
-    // an earlier retention pass was already gone when the day was packed, and
-    // its sidecar is retained forever either way. Reporting that as anything but
-    // `evicted` would turn a normal terminal state into a fault on the one
-    // status the drill-downs render a real answer for.
+    // A day has one bundle covering every capture in it, so the bundle being
+    // there says nothing about this file. Membership is resolved here, at the
+    // cost of a decompress, to keep a body evicted before the day was packed
+    // reading as `evicted` rather than as a fault.
     if (await bundleHasMember(bundlePath, member, file)) {
       return { status: 'compressed', dir: bundle.dir, path: bundlePath, member, day: bundle.day };
     }
@@ -563,13 +556,8 @@ type BundleExtract =
 type BundleMode = 'read' | 'probe';
 
 /**
- * Stream one member out of a bundle: `zstd -dc` decompresses into `tar -xO`,
- * which writes that member to stdout and nothing to disk. The whole day is
- * never unpacked, and no temp directory is involved.
- *
- * Shells out rather than taking a dependency — the server already spawns `gh`
- * and the Claude CLI, and both `tar` and `zstd` are the tools that wrote the
- * bundle in the first place.
+ * Stream one member out of a bundle: `zstd -dc` decompresses into `tar`, which
+ * writes it to stdout. The day is never unpacked and no temp directory is used.
  */
 function runBundleExtract(bundlePath: string, member: string, mode: BundleMode): Promise<BundleExtract> {
   return new Promise((resolve) => {
