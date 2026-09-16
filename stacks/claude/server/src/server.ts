@@ -112,7 +112,7 @@ import {
 import { snapshotChatStream, subscribeChatStream } from './chat-stream.js';
 import { type ReconcileResult, reconcileCommandRuns, resolveCommandsDir } from './command-runs.js';
 import { RemoteConceptStoreError, remoteConceptStore } from './concepts-remote.js';
-import { resolveServerPort } from './config.js';
+import { resolveProxyBaseUrl, resolveServerPort } from './config.js';
 import { memoiseByCorpus } from './corpus-memo.js';
 import { resolveDbPath } from './db/open.js';
 import { recordRouteObservation } from './db/route-observation-store.js';
@@ -151,6 +151,7 @@ import { resolveSessionFile, resolveSessionsDir } from './sessions.js';
 import { resolveSettingsPath } from './settings.js';
 import { resolveSystemPromptPath } from './system-prompt.js';
 import { resolveUsageLimits } from './usage-config.js';
+import { buildWarmStatus, releaseWarmSession, WarmProxyError } from './warm.js';
 
 const PORT = resolveServerPort();
 const HOST = process.env.HOST ?? '127.0.0.1'; // localhost-only by default
@@ -162,6 +163,7 @@ const USAGE_LIMITS = resolveUsageLimits();
 const COMMANDS_DIR = resolveCommandsDir();
 const SETTINGS_PATH = resolveSettingsPath();
 const SYSTEM_PROMPT_PATH = resolveSystemPromptPath();
+const PROXY_BASE_URL = resolveProxyBaseUrl();
 const configuredNotesPollMs = Number(process.env.NOTES_POLL_MS ?? 5_000);
 const NOTES_POLL_MS =
   Number.isFinite(configuredNotesPollMs) && configuredNotesPollMs > 0 ? configuredNotesPollMs : 5_000;
@@ -2026,6 +2028,31 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
   },
   '/api/filters': async ({ res }) => {
     send(res, 200, buildFilters());
+  },
+  // The only read here that leaves this process. A proxy that is not running is a 502 and
+  // says so — the dashboard draws that as "unreachable" rather than as nothing warm.
+  '/api/warm': async ({ res }) => {
+    try {
+      send(res, 200, await buildWarmStatus(PROXY_BASE_URL));
+    } catch (err) {
+      send(res, err instanceof WarmProxyError ? 502 : 500, { error: errorMessage(err) });
+    }
+  },
+  '/api/warm/release': async ({ req, res }) => {
+    await servePost(
+      req,
+      res,
+      async (body) => {
+        const sessionId = jsonString(body.sessionId);
+        if (sessionId === undefined || sessionId === '') throw new Error('missing sessionId');
+        return releaseWarmSession(PROXY_BASE_URL, sessionId);
+      },
+      (msg) => {
+        if (msg.startsWith('missing sessionId')) return 400;
+        // Same distinction the read draws: the proxy failing is not this server failing.
+        return msg.startsWith('warm proxy') ? 502 : 500;
+      },
+    );
   },
 };
 

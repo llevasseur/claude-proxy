@@ -226,6 +226,11 @@ export const API_ROUTES = [
   // A GET of `~/.claude/CLAUDE.md`, and a POST that rewrites it.
   { path: '/api/system-prompt', methods: ['GET', 'POST'], kind: 'json', cors: 'origin', params: [] },
   { path: '/api/filters', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
+  // Read through to the proxy's loopback-only `/__warm`: the keepalive registry lives in
+  // that process's memory. With the proxy down this answers 502, not an empty list.
+  { path: '/api/warm', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
+  // A POST here issues the proxy's `DELETE /__warm` for one session — a write, so `origin`.
+  { path: '/api/warm/release', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
 ] as const satisfies readonly ApiRouteDeclaration[];
 
 /** One entry of the manifest, with its literal path, methods and parameters preserved. */
