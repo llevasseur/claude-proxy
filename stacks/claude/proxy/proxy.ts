@@ -33,11 +33,24 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type DeclinedGate, ensureMessageBreakpoint, estPrefixTokens, noteCacheRead } from './cache-breakpoint.ts';
 import { resolveProxyPort } from './config.ts';
-import { asList, asRecord, asText, type JsonValue, parseJson } from './json.ts';
+import { asList, asNumber, asRecord, asText, type JsonObject, type JsonValue, parseJson } from './json.ts';
+import {
+  clampDeadlineHours,
+  type EntrySnapshot,
+  snapshot as keepaliveSnapshot,
+  MAX_DEADLINE_HOURS,
+  noteRequest,
+  register as registerKeepalive,
+  release as releaseKeepalive,
+  setBearerSource,
+  setUtilizationSource,
+  startKeepalive,
+  usageLiveUtilization,
+} from './keepalive.ts';
 import * as session from './session.ts';
 import * as skim from './skim.ts';
 import { identifyPrompt, type PromptIdentity, recordPrompt } from './system-prompt.ts';
-import { noteAuth, startUsagePolling } from './usage-live.ts';
+import { bearerForAccount, noteAuth, startUsagePolling } from './usage-live.ts';
 import {
   asArrayOf,
   type ContentBlock,
@@ -760,17 +773,334 @@ function renderMarkdown(c: RenderContext, audit: Audit, responseMd: string): str
 /** A caught value is `unknown`; this is the message it would have shown. */
 const errorMessage = (cause: unknown): string => (cause instanceof Error ? cause.message : String(cause));
 
+// ---------------------------------------------------------------------------
+// Keep-alive: the control endpoint, the capture, and the status mirror
+// ---------------------------------------------------------------------------
+
+/**
+ * The control endpoint the `/warm` command registers a session through. The outward
+ * name keeps the `warm` word; the module behind it deliberately does not, because
+ * `cache-breakpoint.ts` already owns that word inside this package. See ADR 0077 §5.
+ */
+const WARM_PATH = '/__warm';
+
+/** The status mirror, written beside `usage-live.json` and in the same shape. */
+export const WARM_STATUS_FILE = 'warm.json';
+
+/** How often the mirror republishes. Unref'd, exactly as the usage poll is. */
+const WARM_STATUS_INTERVAL_MS = 60_000;
+
+/**
+ * Mirrors `CACHE_READ_METERING_WEIGHT` in `stacks/claude/core/src/usage-limits.ts`.
+ *
+ * The duplication is the price of `proxy/` shipping no runtime dependencies — exactly
+ * as `system-prompt.ts` mirrors `packages/core/src/wire-prompt.ts` — and
+ * `warm.test.ts` reads that file's own literal and pins this one to it, so the two
+ * cannot drift apart silently.
+ *
+ * A wrong weight is quiet here: `usageUnits` in `warm.json` is the only local record of
+ * what the pings spent, since ADR 0077 keeps a ping out of the audit corpus entirely,
+ * and ADR 0078 settles the resume rate against exactly that figure.
+ */
+export const CACHE_READ_METERING_WEIGHT = 0.02;
+
+/** Weighted usage units for a cache-read count, rounded to something readable. */
+const usageUnitsFor = (cacheReadTokens: number): number =>
+  Math.round(cacheReadTokens * CACHE_READ_METERING_WEIGHT * 1000) / 1000;
+
+/**
+ * Whether a remote address is this machine's own loopback.
+ *
+ * **The control endpoint is bound to loopback whatever `HOST` says.** The proxy can be
+ * told to bind every interface with `HOST=""`, and an endpoint that registers sessions,
+ * cancels them and lists them must not follow it out there. IPv4 loopback is the whole
+ * `127.0.0.0/8` block rather than `127.0.0.1` alone, and Node reports a v4 peer on a
+ * dual-stack listener as `::ffff:127.0.0.1`, so both forms are accepted. An address
+ * Node could not report at all is not loopback.
+ */
+export function isLoopbackAddress(address: string | null | undefined): boolean {
+  if (!address) return false;
+  const host = address.startsWith('::ffff:') ? address.slice('::ffff:'.length) : address;
+  if (host === '::1') return true;
+  return /^(\d{1,3})\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.exec(host)?.[1] === '127';
+}
+
+/** Whether a request URL addresses the control endpoint, query string and all. */
+export function isWarmControlPath(url: string): boolean {
+  return (url.split('?', 1)[0] ?? url) === WARM_PATH;
+}
+
+/** One control-endpoint call, as `handle()` reads it off the request. */
+export interface WarmControlRequest {
+  method: string;
+  url: string;
+  remoteAddress: string | null | undefined;
+  body: string;
+}
+
+/** What to reply with. Always JSON, and never an echo of a stored body. */
+export interface WarmControlReply {
+  statusCode: number;
+  payload: JsonObject;
+  /** Whether the call changed the registry, so `handle()` knows to republish. */
+  changed: boolean;
+}
+
+/**
+ * Answer one call to the control endpoint.
+ *
+ * Pure with respect to the request — it takes the method, the URL, the peer address and
+ * the raw body rather than a socket — so the loopback rule and the clamp are testable
+ * without standing a server up. `handle()` calls it before anything else touches the
+ * request, so neither `isTokenCount` nor the skim gate ever sees a control call.
+ */
+export function warmControl({ method, url, remoteAddress, body }: WarmControlRequest): WarmControlReply {
+  if (!isLoopbackAddress(remoteAddress)) {
+    return { statusCode: 403, payload: { error: 'the warm control endpoint is loopback-only' }, changed: false };
+  }
+
+  const verb = method.toUpperCase();
+  if (verb === 'GET') return { statusCode: 200, payload: warmStatusDocument(), changed: false };
+
+  const parsed = asRecord(parseJson(body));
+  const query = new URL(url, 'http://127.0.0.1').searchParams;
+  const sessionId = asText(parsed?.sessionId) ?? query.get('sessionId');
+
+  if (verb === 'POST') {
+    if (!sessionId) return { statusCode: 400, payload: { error: 'sessionId is required' }, changed: false };
+    // Absent `hours`, the registration asks for the ceiling — the default ADR 0078
+    // ships knowing the measured resume rate sits below break-even.
+    const requested = asNumber(parsed?.hours) ?? Number(query.get('hours') ?? MAX_DEADLINE_HOURS);
+    const hours = clampDeadlineHours(requested);
+    if (hours === null) {
+      return { statusCode: 400, payload: { error: 'hours must be a finite number above zero' }, changed: false };
+    }
+    const result = registerKeepalive({ sessionKey: sessionId, hours });
+    if (!result.ok) {
+      return { statusCode: 400, payload: { error: result.reason ?? 'registration refused' }, changed: false };
+    }
+    return {
+      statusCode: 200,
+      payload: {
+        ok: true,
+        sessionId,
+        // `pending` until a real request matches it, never `armed` on this reply:
+        // a registration is a handshake rather than an assertion. See ADR 0075.
+        state: result.state ?? 'pending',
+        hours,
+        requestedHours: requested,
+        deadline: result.deadline === undefined ? null : new Date(result.deadline).toISOString(),
+      },
+      changed: true,
+    };
+  }
+
+  if (verb === 'DELETE') {
+    if (!sessionId) return { statusCode: 400, payload: { error: 'sessionId is required' }, changed: false };
+    const released = releaseKeepalive(sessionId);
+    return { statusCode: 200, payload: { ok: true, sessionId, released }, changed: released };
+  }
+
+  return { statusCode: 405, payload: { error: `unsupported method ${verb}` }, changed: false };
+}
+
+/**
+ * Sessions observed resuming — a real request arriving for an entry whose pings had
+ * already fired.
+ *
+ * `keepalive.ts` has no `resumed` stop reason and deliberately does not grow one:
+ * resuming is not the entry retiring, it is the user coming back, and the only place
+ * that is observable is here, where the real request arrives. ADR 0078 settles the
+ * feature's whole premise against this count, so it is recorded rather than inferred
+ * later from a gap in the logs.
+ */
+const resumedSessions = new Map<string, { at: number; afterPings: number }>();
+
+/** Test seam, as `_resetKeepalive` and `resetAuth` are for their own modules. */
+export function _resetWarmStatus(): void {
+  resumedSessions.clear();
+}
+
+/**
+ * The session id a warm registration is matched against: the header's, else the
+ * `metadata.user_id` blob's. ADR 0075 measured the two equal across 3,291 requests with
+ * zero disagreement and no one-sided case, which is what justifies the coalesce.
+ */
+export function warmSessionKey(sender: SessionInfo): string | null {
+  return sender.sessionId ?? sender.metadataSessionId;
+}
+
+/**
+ * Fold a real forwarded request into the registry, and notice a resume.
+ *
+ * `reqJson` is the **forwarded** body rather than the raw one: `handle()` rewrites that
+ * object in place for every strip and for an injected breakpoint, and `forwardBody` is
+ * that same object serialized — so these are the bytes upstream actually cached, which
+ * is the only thing a ping can usefully replay.
+ *
+ * `noteRequest` answers false for a session nobody registered, and that is the whole
+ * guard: an unregistered session costs one `Map.get`, stores nothing, and never reaches
+ * the snapshot below. That is what keeps the feature off the hot path for everyone who
+ * never asked for it.
+ */
+export function noteWarmRequest(args: {
+  sessionKey: string | null;
+  account: string | null;
+  reqJson: RequestBody | null;
+  headers: HeaderBag;
+  startedAt: number;
+}): boolean {
+  const took = noteRequest({
+    sessionKey: args.sessionKey,
+    account: args.account,
+    body: args.reqJson,
+    headers: args.headers,
+    startedAt: args.startedAt,
+  });
+  const key = args.sessionKey;
+  if (!took || key === null) return false;
+  const entry = keepaliveSnapshot().find((e) => e.sessionKey === key);
+  if (entry !== undefined && entry.pingsSent > 0 && !resumedSessions.has(key)) {
+    resumedSessions.set(key, { at: args.startedAt, afterPings: entry.pingsSent });
+  }
+  return true;
+}
+
+/**
+ * The terminal record for one entry as `warm.json` reports it: `resumed` when the user
+ * came back, `expired` when the entry ran out of time or was never matched at all, and
+ * `stopped-<reason>` for every other retirement.
+ *
+ * **`resumed` outranks a later retirement**, because it is the event ADR 0078 measures:
+ * an entry that was resumed and then hit its deadline still resumed, and reporting it
+ * as `expired` would undercount exactly the figure the record needs.
+ */
+function warmOutcome(entry: EntrySnapshot): string | null {
+  if (resumedSessions.has(entry.sessionKey)) return 'resumed';
+  const reason = entry.outcome?.reason;
+  if (reason === undefined) return null;
+  return reason === 'deadline' || reason === 'unmatched' ? 'expired' : `stopped-${reason}`;
+}
+
+/**
+ * The status document, built from `snapshot()` alone.
+ *
+ * **Status only, by construction rather than by filtering**: `snapshot()` carries no
+ * body, no headers and no credential, so there is nothing here to redact. Counts,
+ * timestamps and reasons — the whole publishable surface ADR 0077 §3 allows.
+ */
+export function warmStatusDocument(now = Date.now()): JsonObject {
+  const entries = keepaliveSnapshot();
+  const iso = (at: number): string => new Date(at).toISOString();
+
+  const rows = entries.map((entry) => {
+    const row: JsonObject = {
+      sessionKey: entry.sessionKey,
+      account: entry.account,
+      state: entry.state,
+      pingsSent: entry.pingsSent,
+      cacheReadTokens: entry.cacheReadTokens,
+      usageUnits: usageUnitsFor(entry.cacheReadTokens),
+      ttlMs: entry.ttlMs,
+      registeredAt: iso(entry.registeredAt),
+      lastActivity: iso(entry.lastActivity),
+      deadline: iso(entry.deadline),
+      outcome: warmOutcome(entry),
+    };
+    // One short clause — a status code, a count. Never a body, prompt or credential.
+    if (entry.outcome?.detail !== undefined) row.outcomeDetail = entry.outcome.detail;
+    const resumed = resumedSessions.get(entry.sessionKey);
+    if (resumed !== undefined) {
+      row.resumedAt = iso(resumed.at);
+      row.resumedAfterPings = resumed.afterPings;
+    }
+    return row;
+  });
+
+  const cacheReadTokens = entries.reduce((n, e) => n + e.cacheReadTokens, 0);
+  return {
+    updatedAt: iso(now),
+    entries: rows,
+    totals: {
+      entries: entries.length,
+      pending: entries.filter((e) => e.state === 'pending').length,
+      armed: entries.filter((e) => e.state === 'armed').length,
+      stopped: entries.filter((e) => e.state === 'stopped').length,
+      resumed: entries.filter((e) => resumedSessions.has(e.sessionKey)).length,
+      pingsSent: entries.reduce((n, e) => n + e.pingsSent, 0),
+      cacheReadTokens,
+      usageUnits: usageUnitsFor(cacheReadTokens),
+    },
+  };
+}
+
+/**
+ * Publish the mirror: build the document, write it to a `.tmp` sibling, rename it into
+ * place. The rename is the point — it is atomic, so no reader ever sees half a
+ * document, and it is what wakes the server's existing log-directory SSE watcher,
+ * exactly as `pollOnce` writes `usage-live.json`.
+ *
+ * Writes nothing at all while no session has ever registered and no file already
+ * exists, so the feature leaves no trace for anyone who never asked for it.
+ */
+export function writeWarmStatus(logDir: string, now = Date.now()): boolean {
+  const dest = path.join(logDir, WARM_STATUS_FILE);
+  if (keepaliveSnapshot().length === 0 && !fs.existsSync(dest)) return false;
+  try {
+    fs.mkdirSync(logDir, { recursive: true });
+    const tmp = `${dest}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(warmStatusDocument(now), null, 2));
+    fs.renameSync(tmp, dest);
+    return true;
+  } catch (cause) {
+    console.warn(`[agent-proxy] warm status write failed: ${errorMessage(cause)}`);
+    return false;
+  }
+}
+
+/** Republish the mirror on a timer. Unref'd, so it never holds the process open. */
+export function startWarmStatusMirror(
+  logDir: string,
+  { intervalMs = WARM_STATUS_INTERVAL_MS }: { intervalMs?: number } = {},
+): () => void {
+  const timer = setInterval(() => {
+    writeWarmStatus(logDir);
+  }, intervalMs);
+  timer.unref?.();
+  return () => clearInterval(timer);
+}
+
 function handle(req: http.IncomingMessage, res: http.ServerResponse): void {
   const reqPath = req.url ?? '/';
+  // The instant the request began. A cached prefix's own lifetime is measured from the
+  // start of the request that reads or writes it, so this is what a keep-alive entry
+  // has to time its padded interval from — not the instant the reply came back.
+  const startedAt = Date.now();
   const chunks: Buffer[] = [];
   req.on('data', (c: Buffer) => chunks.push(c));
   req.on('end', () => {
     const body = Buffer.concat(chunks);
+
+    // ---- The keep-alive control endpoint, answered before anything else looks ----
+    // Ahead of `noteAuth`, ahead of the body parse, ahead of `isTokenCount` and ahead
+    // of the skim gate. Returning here is what keeps a control call out of all of them,
+    // rather than each one separately learning to exclude it — the same reason ADR 0077
+    // routes a ping around `handle()` instead of listing what it must skip.
+    if (isWarmControlPath(reqPath)) {
+      const reply = warmControl({
+        method: req.method ?? 'GET',
+        url: reqPath,
+        remoteAddress: req.socket.remoteAddress,
+        body: body.toString('utf8'),
+      });
+      res.writeHead(reply.statusCode, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(reply.payload));
+      if (reply.changed) writeWarmStatus(LOG_DIR);
+      return;
+    }
+
     const timestamp = new Date().toISOString();
     const base = baseName();
-
-    // Kept in memory for the usage poll; never logged or written to a sidecar.
-    noteAuth(req.headers);
 
     // Parse the request body once — the skim gate and the logging both need it.
     let reqJson: RequestBody | null = null;
@@ -785,7 +1115,13 @@ function handle(req: http.IncomingMessage, res: http.ServerResponse): void {
 
     // The session this request belongs to, as the cache-breakpoint ledger keys it.
     const sender = extractSession(req.headers, reqJson);
-    const sessionKey = sender.sessionId ?? sender.metadataSessionId;
+    const sessionKey = warmSessionKey(sender);
+
+    // Kept in memory for the usage poll and for a keep-alive ping; never logged or
+    // written to a sidecar. The account is what scopes the bearer — ADR 0076 lets a
+    // ping borrow only within one `account_uuid` and never across — so this is noted
+    // here, once the body is parsed and the account is known, rather than on the way in.
+    noteAuth(req.headers, sender.account);
 
     // Strip what the CLI can't keep out itself — withheld tools and injected
     // reminders — then put back the message-level cache breakpoint it sometimes
@@ -920,6 +1256,27 @@ function handle(req: http.IncomingMessage, res: http.ServerResponse): void {
         up.on('end', () => {
           res.end();
           if (isTokenCount(reqPath)) return;
+
+          // ---- The keep-alive capture ----
+          // Only for a session that registered, and only on a forward upstream actually
+          // accepted: a ping replays the stored body verbatim, so storing one upstream
+          // rejected would schedule a request already known to fail. `noteWarmRequest`
+          // answers false for every session nobody registered, storing nothing and
+          // costing one map lookup — which is what keeps this off the hot path.
+          //
+          // Deliberately not on the skim-hit path above: a skim hit is served from this
+          // proxy's own cache and never reaches Anthropic, so it refreshes no upstream
+          // prefix. Treating it as activity would push the ping back while the cache it
+          // exists to hold open carried on expiring.
+          const upstreamStatus = up.statusCode ?? 0;
+          if (
+            upstreamStatus >= 200 &&
+            upstreamStatus < 300 &&
+            noteWarmRequest({ sessionKey, account: sender.account, reqJson, headers: req.headers, startedAt })
+          ) {
+            writeWarmStatus(LOG_DIR);
+          }
+
           try {
             const rawResponse = Buffer.concat(respChunks);
             const { markdown, inputTokens, usage, model: respModel } = decodeResponse(rawResponse.toString('utf8'));
@@ -1029,6 +1386,16 @@ if (isMain) {
   // Nothing to ask for until a request has gone through and handed us a token,
   // so the first tick is a minute out rather than immediate.
   startUsagePolling(LOG_DIR);
+
+  // The keep-alive registry. Its bearer is scoped to one account with no cross-account
+  // fallback (ADR 0076); its budget is read off Anthropic's own meter in
+  // `usage-live.json` rather than the local sidecar corpus, which by design does not
+  // record a ping at all (ADR 0077 §2). One sweeper for the whole registry and one
+  // status mirror, both unref'd — neither holds the process open.
+  setBearerSource(bearerForAccount);
+  setUtilizationSource(usageLiveUtilization(LOG_DIR));
+  startKeepalive();
+  startWarmStatusMirror(LOG_DIR);
 }
 
 // Exported for unit tests.

@@ -33,28 +33,71 @@ const nativeFetch: FetchLike = async (url, init) => {
   return { ok: res.ok, status: res.status, json: () => res.json() as Promise<JsonValue> };
 };
 
-/** Newest forwarded credentials, in memory only. */
-let auth: { authorization: string; beta: string | undefined } | null = null;
+/** One forwarded credential, as the poll and a keep-alive ping both need it. */
+interface Credentials {
+  authorization: string;
+  beta: string | undefined;
+}
+
+/** Newest forwarded credentials, in memory only. What the usage poll authenticates with. */
+let auth: Credentials | null = null;
+
+/**
+ * The newest bearer seen for each `account_uuid`, in memory only.
+ *
+ * A keep-alive ping reads this rather than the credential captured with its own entry.
+ * A warm entry exists precisely because its session went quiet, so the bearer stored
+ * alongside it ages with nothing to refresh it — while another session live on the same
+ * account keeps this one current. Measured on one archived day: 52 distinct sessions on
+ * a single account, and never a gap above 29.2 minutes against a 50-minute ping
+ * interval. See ADR 0076.
+ *
+ * Never written, logged, or exported as a value — only {@link bearerForAccount} reads
+ * it, and a proxy restart clears it.
+ */
+const byAccount = new Map<string, Credentials>();
 
 /**
  * Remember the OAuth bearer off a forwarded request. API keys are ignored: the
  * endpoint is OAuth-only, and an `x-api-key` account has real headers instead.
+ *
+ * `account` is `metadata.user_id.account_uuid` when the caller has it, and widens this
+ * from one global bearer to one per account without changing what the poll sees: the
+ * global is still set on every call, so a caller that passes no account behaves exactly
+ * as it did before the account-keyed store existed.
  */
-export function noteAuth(headers: HeaderBag | undefined | null): void {
+export function noteAuth(headers: HeaderBag | undefined | null, account: string | null = null): void {
   const raw = headers?.authorization ?? headers?.Authorization;
   const value = Array.isArray(raw) ? raw[0] : raw;
   if (value === undefined || !/^Bearer\s+\S/i.test(value)) return;
   const beta = headers?.['anthropic-beta'];
-  auth = { authorization: value, beta: Array.isArray(beta) ? beta.join(', ') : beta };
+  const credentials: Credentials = { authorization: value, beta: Array.isArray(beta) ? beta.join(', ') : beta };
+  auth = credentials;
+  if (account) byAccount.set(account, credentials);
 }
 
 /** Test seam. */
 export function resetAuth(): void {
   auth = null;
+  byAccount.clear();
 }
 
 export function hasAuth(): boolean {
   return auth !== null;
+}
+
+/**
+ * The newest bearer held for one account, or null when none is held for it.
+ *
+ * **There is no cross-account fallback, and an entry with no account of its own gets
+ * nothing.** Borrowing a different account's token is the objection ADR 0076 scopes
+ * against, so falling back to the global {@link auth} here would reintroduce exactly
+ * what the scoping exists to prevent. An entry that gets null stops and reports
+ * `no-credential` rather than pinging with a token that was never its own.
+ */
+export function bearerForAccount(account: string | null): string | null {
+  if (!account) return null;
+  return byAccount.get(account)?.authorization ?? null;
 }
 
 async function fetchUsage(fetchImpl: FetchLike): Promise<JsonValue | null> {
