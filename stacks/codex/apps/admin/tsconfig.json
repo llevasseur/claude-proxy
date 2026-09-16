@@ -5,7 +5,29 @@
     "jsx": "react-jsx",
     "types": ["node"],
     "noEmit": true,
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    // This workspace holds two React majors on purpose: this admin and claude's are React
+    // 18, ox-alpha's is React 19. pnpm's hidden hoist directory,
+    // `node_modules/.pnpm/node_modules/`, keeps one version of each hoisted package, and
+    // which one it keeps depends on install history rather than on the lockfile - so it
+    // can hold either major. `lucide-react` and `@tanstack/react-router` declare no
+    // `@types/react` of their own, so TypeScript resolves the `react` their `.d.ts` files
+    // import by walking up from `.pnpm/` into that directory and picks up whichever major
+    // landed there, while this package's own source picks up the 18 it declares. Two
+    // `ReactNode` types then meet at the JSX boundary and every icon and `<Link>` fails
+    // TS2786, "cannot be used as a JSX component". That is why the error appears on one
+    // machine and not in CI: it needs an install that happened to hoist React 19.
+    //
+    // Pinning both specifiers here resolves them for the whole program, dependency `.d.ts`
+    // files included, so the types match the React this package actually depends on
+    // whatever pnpm hoisted. Compile-time only - Vite resolves runtime imports itself, and
+    // `@types/*` ship no runtime code, so nothing codex does at run time moves.
+    "paths": {
+      "react": ["./node_modules/@types/react"],
+      "react/*": ["./node_modules/@types/react/*"],
+      "react-dom": ["./node_modules/@types/react-dom"],
+      "react-dom/*": ["./node_modules/@types/react-dom/*"]
+    }
   },
   "include": ["src", "vite.config.ts"]
 }
