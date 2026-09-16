@@ -35,6 +35,17 @@ function stateBadge(state: string): string {
 }
 
 /**
+ * The badge a ping's verdict wears. `paid-full-price` takes the severe one: it means the
+ * registration is spending tokens and holding nothing open.
+ */
+function verdictBadge(verdict: string | null): string {
+  if (verdict === 'cache-hit') return 'present';
+  if (verdict === 'paid-full-price') return 'sev-high';
+  if (verdict === 'refused') return 'sev-warn';
+  return 'neutral';
+}
+
+/**
  * The window the registration asked for, in hours — derived, since the document carries the
  * two instants rather than the figure. A row missing either end shows nothing, not a zero.
  */
@@ -106,6 +117,27 @@ function SessionName({ entry, transcript }: { entry: WarmEntry; transcript: Sess
   );
 }
 
+/**
+ * What the last ping read. `Pings` and `Usage units` beside it count what was spent; this
+ * is the only column that says what it bought.
+ */
+function LastPingCell({ entry }: { entry: WarmEntry }) {
+  const last = entry.lastPing;
+  if (last === null) return <span className='muted'>—</span>;
+  return (
+    <>
+      <span className={`badge ${verdictBadge(entry.lastPingVerdict)}`}>{entry.lastPingVerdict ?? 'unknown'}</span>
+      <div className='muted' style={{ fontSize: 'var(--text-3)' }}>
+        {fmtInt(last.cacheReadTokens)} cached / {fmtInt(last.inputTokens)} input
+        {last.statusCode < 200 || last.statusCode >= 300 ? ` · HTTP ${last.statusCode}` : ''}
+      </div>
+      <div className='muted' style={{ fontSize: 'var(--text-3)' }}>
+        {last.at === '' ? '—' : `${fmtAgeShort(last.at)} ago`}
+      </div>
+    </>
+  );
+}
+
 export function WarmPage() {
   const warm = useQuery({ queryKey: ['warm'], queryFn: getWarm, refetchInterval: REFETCH_MS, retry: false });
 
@@ -169,7 +201,10 @@ function Totals({ status }: { status: WarmResponse }) {
       </div>
       <p className='muted' style={{ marginBottom: 0 }}>
         Read through <code>{status.meta.proxy}/__warm</code>. Pending means the registration has not yet been matched to
-        a real request, so nothing is being pinged for it (ADR 0075).
+        a real request, so nothing is being pinged for it (ADR 0075). Each row's last ping carries its own reading:{' '}
+        <strong>cache-hit</strong> read cached tokens and is doing its job, <strong>paid-full-price</strong> was billed
+        for the prefix without reading the cache and is worth releasing, and <strong>no-usage-reported</strong> means
+        the reply carried no counts to read at all.
       </p>
     </div>
   );
@@ -239,6 +274,7 @@ function RegistryTable({ entries, now }: { entries: WarmEntry[]; now: number }) 
               <th>Deadline</th>
               <th>Last activity</th>
               <th className='num'>Pings</th>
+              <th>Last ping</th>
               <th className='num'>Usage units</th>
               <th>{/* release */}</th>
             </tr>
@@ -270,6 +306,9 @@ function RegistryTable({ entries, now }: { entries: WarmEntry[]; now: number }) 
                   </td>
                   <td>{entry.lastActivity === '' ? '—' : `${fmtAgeShort(entry.lastActivity)} ago`}</td>
                   <td className='num'>{fmtInt(entry.pingsSent)}</td>
+                  <td>
+                    <LastPingCell entry={entry} />
+                  </td>
                   <td className='num'>{entry.usageUnits.toFixed(2)}</td>
                   <td>
                     <button

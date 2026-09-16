@@ -37,8 +37,10 @@ import { asList, asNumber, asRecord, asText, type JsonObject, type JsonValue, pa
 import {
   type EntrySnapshot,
   snapshot as keepaliveSnapshot,
+  type LastPing,
   MAX_DEADLINE_HOURS,
   noteRequest,
+  pingNow,
   register as registerKeepalive,
   release as releaseKeepalive,
   setBearerSource,
@@ -799,6 +801,13 @@ const errorMessage = (cause: unknown): string => (cause instanceof Error ? cause
  */
 const WARM_PATH = '/__warm';
 
+/**
+ * The sub-path that sends one ping now, rather than at the next padded interval. A path of
+ * its own because `POST /__warm` already means "register this session". Same loopback rule
+ * and same `sessionId` shapes.
+ */
+const WARM_PING_PATH = '/__warm/ping';
+
 /** The status mirror, written beside `usage-live.json` and in the same shape. */
 export const WARM_STATUS_FILE = 'warm.json';
 
@@ -842,7 +851,13 @@ export function isLoopbackAddress(address: string | null | undefined): boolean {
 
 /** Whether a request URL addresses the control endpoint, query string and all. */
 export function isWarmControlPath(url: string): boolean {
-  return (url.split('?', 1)[0] ?? url) === WARM_PATH;
+  const pathname = url.split('?', 1)[0] ?? url;
+  return pathname === WARM_PATH || pathname === WARM_PING_PATH;
+}
+
+/** Whether that control call is the forced-ping one, which is answered asynchronously. */
+export function isWarmPingPath(url: string): boolean {
+  return (url.split('?', 1)[0] ?? url) === WARM_PING_PATH;
 }
 
 /** One control-endpoint call, as `handle()` reads it off the request. */
@@ -918,6 +933,100 @@ export function warmControl({ method, url, remoteAddress, body }: WarmControlReq
   }
 
   return { statusCode: 405, payload: { error: `unsupported method ${verb}` }, changed: false };
+}
+
+/**
+ * One ping's counts as the control endpoint and the mirror both report them — counts, a
+ * status code and an instant, the publishable surface ADR 0077 §3 allows.
+ */
+function pingReport(last: LastPing): JsonObject {
+  return {
+    at: new Date(last.at).toISOString(),
+    statusCode: last.statusCode,
+    inputTokens: last.inputTokens,
+    cacheCreationTokens: last.cacheCreationTokens,
+    cacheReadTokens: last.cacheReadTokens,
+    outputTokens: last.outputTokens,
+    usageUnits: usageUnitsFor(last.cacheReadTokens),
+  };
+}
+
+/**
+ * The four counts read as one word:
+ *
+ * - `cache-hit` — the ping read cached tokens. The keepalive is doing its job.
+ * - `paid-full-price` — billed for the prefix without reading the cache. The registration
+ *   is cost with no benefit; release it.
+ * - `no-usage-reported` — 2xx carrying no token counts this could read. A fault in the
+ *   reading rather than a verdict on the cache.
+ * - `refused` — the upstream did not answer 2xx. `statusCode` is the whole story.
+ */
+function pingVerdict(last: LastPing | null): string {
+  if (last === null) return 'no-ping-sent';
+  if (last.statusCode < 200 || last.statusCode >= 300) return 'refused';
+  if (last.cacheReadTokens > 0) return 'cache-hit';
+  if (last.inputTokens > 0) return 'paid-full-price';
+  return 'no-usage-reported';
+}
+
+/**
+ * Answer one call to the forced-ping sub-path: send a ping for the named session now and
+ * report what came back.
+ *
+ * Separate from {@link warmControl} rather than another verb inside it because this one
+ * waits on the upstream, and that keeps `warmControl` and all its callers synchronous.
+ *
+ * A refusal is 404 when no registration exists under that id and 409 when one does but is
+ * in no state to ping — pending, stopped, past its deadline, or holding no credential.
+ */
+export async function warmPingControl({
+  method,
+  url,
+  remoteAddress,
+  body,
+}: WarmControlRequest): Promise<WarmControlReply> {
+  if (!isLoopbackAddress(remoteAddress)) {
+    return { statusCode: 403, payload: { error: 'the warm control endpoint is loopback-only' }, changed: false };
+  }
+
+  const verb = method.toUpperCase();
+  if (verb !== 'POST') {
+    return { statusCode: 405, payload: { error: `unsupported method ${verb}` }, changed: false };
+  }
+
+  const parsed = asRecord(parseJson(body));
+  const query = new URL(url, 'http://127.0.0.1').searchParams;
+  const sessionId = asText(parsed?.sessionId) ?? query.get('sessionId');
+  if (!sessionId) return { statusCode: 400, payload: { error: 'sessionId is required' }, changed: false };
+
+  const result = await pingNow(sessionId);
+  if (!result.ok) {
+    return {
+      // `state` is absent only when the registry held nothing under that id at all.
+      statusCode: result.state === undefined ? 404 : 409,
+      payload: {
+        ok: false,
+        sessionId,
+        state: result.state ?? null,
+        error: result.reason ?? 'no ping was sent',
+      },
+      changed: false,
+    };
+  }
+
+  const last = result.lastPing ?? null;
+  return {
+    statusCode: 200,
+    payload: {
+      ok: true,
+      sessionId,
+      state: result.state ?? null,
+      ping: last === null ? null : pingReport(last),
+      verdict: pingVerdict(last),
+    },
+    // The ping moved `lastActivity` and the counters, so the mirror is now stale.
+    changed: true,
+  };
 }
 
 /**
@@ -1023,6 +1132,11 @@ export function warmStatusDocument(now = Date.now()): JsonObject {
       deadline: iso(entry.deadline),
       outcome: warmOutcome(entry),
     };
+    // What the last ping read, which the cumulative count cannot say on its own.
+    if (entry.lastPing !== null) {
+      row.lastPing = pingReport(entry.lastPing);
+      row.lastPingVerdict = pingVerdict(entry.lastPing);
+    }
     // One short clause — a status code, a count. Never a body, prompt or credential.
     if (entry.outcome?.detail !== undefined) row.outcomeDetail = entry.outcome.detail;
     const resumed = resumedSessions.get(entry.sessionKey);
@@ -1103,15 +1217,28 @@ function handle(req: http.IncomingMessage, res: http.ServerResponse): void {
     // rather than each one separately learning to exclude it — the same reason ADR 0077
     // routes a ping around `handle()` instead of listing what it must skip.
     if (isWarmControlPath(reqPath)) {
-      const reply = warmControl({
+      const control: WarmControlRequest = {
         method: req.method ?? 'GET',
         url: reqPath,
         remoteAddress: req.socket.remoteAddress,
         body: body.toString('utf8'),
-      });
-      res.writeHead(reply.statusCode, { 'content-type': 'application/json' });
-      res.end(JSON.stringify(reply.payload));
-      if (reply.changed) writeWarmStatus(LOG_DIR);
+      };
+      const answer = (reply: WarmControlReply): void => {
+        res.writeHead(reply.statusCode, { 'content-type': 'application/json' });
+        res.end(JSON.stringify(reply.payload));
+        if (reply.changed) writeWarmStatus(LOG_DIR);
+      };
+      // The forced ping is the one control call that waits on the upstream, so it is the
+      // one answered from a promise. Everything else stays synchronous.
+      if (isWarmPingPath(reqPath)) {
+        void warmPingControl(control).then(answer, (cause: unknown) => {
+          // Never interpolate the cause: a ping's request error can carry the credential.
+          console.warn(`[agent-proxy] forced ping failed: ${errorMessage(cause)}`);
+          answer({ statusCode: 500, payload: { error: 'the ping could not be sent' }, changed: false });
+        });
+        return;
+      }
+      answer(warmControl(control));
       return;
     }
 

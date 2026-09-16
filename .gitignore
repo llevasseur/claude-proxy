@@ -21,3 +21,6 @@ tmp/*
 .claude/skills/
 # net stack's local sample database, anchored at stacks/net/data per ADR 0054
 stacks/net/data/
+# my-command-tools writes this per worktree. Biome reads this file alone
+# (`vcs.useIgnoreFile`), not the global ignore, so without the entry `check` walks it.
+.my-command/

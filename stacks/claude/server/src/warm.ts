@@ -46,6 +46,20 @@ export class WarmProxyError extends Error {
   }
 }
 
+/**
+ * What the last ping came back with. The cumulative `cacheReadTokens` beside it cannot
+ * separate a ping that read no cache from one the upstream refused; these can.
+ */
+export interface WarmLastPing {
+  at: string;
+  statusCode: number;
+  inputTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
+  outputTokens: number;
+  usageUnits: number;
+}
+
 /** One registered session, as the proxy's status document describes it. */
 export interface WarmEntry {
   sessionKey: string;
@@ -65,6 +79,10 @@ export interface WarmEntry {
   outcomeDetail: string | null;
   resumedAt: string | null;
   resumedAfterPings: number | null;
+  /** Null until this entry has sent a ping, and on a proxy too old to report one. */
+  lastPing: WarmLastPing | null;
+  /** The proxy's own one-word reading of `lastPing`; null when it reported none. */
+  lastPingVerdict: string | null;
 }
 
 /** The document's own totals, carried through rather than recomputed from the rows. */
@@ -130,6 +148,22 @@ function toEntry(raw: JsonObject): WarmEntry {
     outcomeDetail: stringField(raw, 'outcomeDetail') ?? null,
     resumedAt: stringField(raw, 'resumedAt') ?? null,
     resumedAfterPings: numberField(raw, 'resumedAfterPings') ?? null,
+    lastPing: toLastPing(objectField(raw, 'lastPing')),
+    lastPingVerdict: stringField(raw, 'lastPingVerdict') ?? null,
+  };
+}
+
+/** Narrow the last ping's counts, defaulted field by field like the row around it. */
+function toLastPing(raw: JsonObject | undefined): WarmLastPing | null {
+  if (raw === undefined) return null;
+  return {
+    at: stringField(raw, 'at') ?? '',
+    statusCode: numberField(raw, 'statusCode') ?? 0,
+    inputTokens: numberField(raw, 'inputTokens') ?? 0,
+    cacheCreationTokens: numberField(raw, 'cacheCreationTokens') ?? 0,
+    cacheReadTokens: numberField(raw, 'cacheReadTokens') ?? 0,
+    outputTokens: numberField(raw, 'outputTokens') ?? 0,
+    usageUnits: numberField(raw, 'usageUnits') ?? 0,
   };
 }
 

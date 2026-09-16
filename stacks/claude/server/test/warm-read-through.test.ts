@@ -77,6 +77,42 @@ describe('buildWarmStatus', () => {
     expect(status.updatedAt).toBeNull();
   });
 
+  it('carries the last ping through, counts and verdict alike', async () => {
+    const { fetchImpl } = stub(200, {
+      entries: [
+        {
+          ...ROW,
+          lastPing: {
+            at: '2026-09-16T09:05:00.000Z',
+            statusCode: 200,
+            inputTokens: 240,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 31_402,
+            outputTokens: 1,
+            usageUnits: 0.628,
+          },
+          lastPingVerdict: 'cache-hit',
+        },
+      ],
+    });
+
+    const status = await buildWarmStatus(BASE, fetchImpl);
+
+    expect(status.entries[0]?.lastPing).toMatchObject({ statusCode: 200, cacheReadTokens: 31_402, inputTokens: 240 });
+    expect(status.entries[0]?.lastPingVerdict).toBe('cache-hit');
+  });
+
+  it('reads no last ping as null rather than as zeroes, on an older proxy or before one fired', async () => {
+    // A row of zeroes would read as a ping that happened and measured nothing — the
+    // opposite claim to no ping having fired.
+    const { fetchImpl } = stub(200, { entries: [ROW] });
+
+    const status = await buildWarmStatus(BASE, fetchImpl);
+
+    expect(status.entries[0]?.lastPing).toBeNull();
+    expect(status.entries[0]?.lastPingVerdict).toBeNull();
+  });
+
   it('counts the rows itself when the document carries no totals', async () => {
     const { fetchImpl } = stub(200, { entries: [ROW, { ...ROW, sessionKey: 'sess-3', state: 'pending' }] });
 
