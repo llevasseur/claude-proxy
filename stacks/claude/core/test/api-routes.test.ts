@@ -93,6 +93,8 @@ describe('API_ROUTES', () => {
       '/api/main-history/sync-local',
       '/api/main-history/hide',
       '/api/system-prompt',
+      // Retires a keepalive registration in the proxy, so it is a write like the rest.
+      '/api/warm/release',
     ]);
   });
 
