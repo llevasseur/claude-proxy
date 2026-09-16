@@ -975,6 +975,20 @@ export interface ChatStopResponse {
  * process boundary, and a value this build has not heard of should render as itself rather
  * than fail to type.
  */
+/**
+ * What the last ping came back with — the counts a cumulative `cacheReadTokens` cannot
+ * separate. Zero cache reads beside a large `inputTokens` is a ping paying full price for
+ * a prefix it did not read; beside a zero it is a reply that carried no usage at all.
+ */
+export interface WarmLastPing {
+  at: string;
+  statusCode: number;
+  inputTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
+  outputTokens: number;
+  usageUnits: number;
+}
 export interface WarmEntry {
   sessionKey: string;
   account: string | null;
@@ -991,6 +1005,10 @@ export interface WarmEntry {
   outcomeDetail: string | null;
   resumedAt: string | null;
   resumedAfterPings: number | null;
+  /** Null before this entry has pinged, and on a proxy too old to report one. */
+  lastPing: WarmLastPing | null;
+  /** The proxy's one-word reading of `lastPing` — `cache-hit`, `paid-full-price`, … */
+  lastPingVerdict: string | null;
 }
 /** The proxy's own tallies, carried through rather than recounted on this side. */
 export interface WarmTotals {

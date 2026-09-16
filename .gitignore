@@ -21,3 +21,8 @@ tmp/*
 .claude/skills/
 # net stack's local sample database, anchored at stacks/net/data per ADR 0054
 stacks/net/data/
+# my-command-tools writes this per worktree to track a branch's screenshot runs. It is
+# already ignored globally on this device, but Biome reads the repository's .gitignore
+# alone (`vcs.useIgnoreFile`) — so without this line `check` walks it and fails on its
+# formatting in every toolkit-created worktree, on a file no one wrote or commits.
+.my-command/

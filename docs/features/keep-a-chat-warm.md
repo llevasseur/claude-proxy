@@ -133,11 +133,12 @@ warmed nothing, rather than sitting silently warming nothing.
 `/__warm` is handled in `handle()` ahead of the skim gate and the upstream forward, and
 takes three methods:
 
-| Method | Body | Does |
-|---|---|---|
-| `POST` | `{sessionId, hours}` | registers; `hours` clamped to a maximum of 8 |
-| `DELETE` | — | cancels the registration |
-| `GET` | — | lists current entries |
+| Method | Path | Body | Does |
+|---|---|---|---|
+| `POST` | `/__warm` | `{sessionId, hours}` | registers; `hours` clamped to a maximum of 8 |
+| `DELETE` | `/__warm` | — | cancels the registration |
+| `GET` | `/__warm` | — | lists current entries |
+| `POST` | `/__warm/ping` | `{sessionId}` | sends one ping now and reports what it read |
 
 **It is bound to 127.0.0.1 only**, and rejects a non-loopback caller whatever `HOST` is set
 to. The proxy can be bound to all interfaces with `HOST=""`; this endpoint does not follow
@@ -179,6 +180,41 @@ T+8h it is stale but byte-identical, and a cache match is a byte comparison.
 request from one client version (`claude-cli/2.1.222`) and says so; re-measure before
 trusting it across a client upgrade.
 
+### Measuring whether a ping is actually working
+
+A ping's reply is read for its token counts and the body is dropped, so those counts are the
+only evidence this feature produces about itself. That left one question unanswerable: a
+cumulative `cacheReadTokens` of zero beside a non-zero `pingsSent` could mean the ping read
+no cache, or that the reply carried no counts the reader recognised — and the next chance to
+look was a padded interval away.
+
+`POST /__warm/ping` closes that. It sends one ping for a named session **now**, outside the
+schedule, and answers with that ping's own four counts plus a one-word verdict:
+
+```bash
+curl -s -XPOST http://127.0.0.1:${CLAUDE_PROXY_PORT:-8787}/__warm/ping \
+  -d "{\"sessionId\":\"$CLAUDE_CODE_SESSION_ID\"}"
+```
+
+**The decision rule, which is what the verdict states:**
+
+| verdict | Means | Do |
+|---|---|---|
+| `cache-hit` | The ping read cached tokens. | Nothing — it is working. |
+| `paid-full-price` | Billed for the prefix, read none of it: `inputTokens` large, `cacheReadTokens` zero. | Release the registration; it is cost with no benefit. |
+| `no-usage-reported` | 2xx carrying no counts to read. | A fault in the reading, not a verdict on the cache. |
+| `refused` | The upstream did not answer 2xx. | Read `statusCode`. |
+
+Every guard the scheduled sweep applies still applies — a pending, stopped, expired or
+uncredentialed entry is refused with its reason rather than pinged, `404` when no
+registration exists under that id and `409` when one does but cannot ping. The forced ping
+moves `lastActivity` exactly as a scheduled one does, since that is the ping's own effect on
+the cached prefix's lifetime rather than a side effect of forcing it.
+
+The same counts land on every entry as `lastPing`, recorded for **every** reply rather than
+only a successful one — a ping refused with a `400` never increments `pingsSent`, so before
+this it left no trace at all.
+
 ### Stop conditions
 
 Each records a distinct reason:
@@ -200,8 +236,10 @@ Each records a distinct reason:
 `logs/warm.json` mirrors status into `LOG_DIR` in the shape of `usage-live.json` — built,
 written to a `.tmp` sibling, then renamed into place, which also wakes the server's existing
 log-directory SSE watcher. Per entry and in aggregate it carries the session key, `state`,
-`pingsSent`, cumulative cache-read tokens, `usageUnits` spent, the deadline, and a terminal
-`outcome` of `resumed`, `expired`, or `stopped-<reason>`.
+`pingsSent`, cumulative cache-read tokens, `usageUnits` spent, the deadline, a terminal
+`outcome` of `resumed`, `expired`, or `stopped-<reason>`, and `lastPing` with its
+`lastPingVerdict` — the four counts the last ping read, which is what says whether the
+cumulative figures were bought or merely spent.
 
 **Status only — no body, no prompt, no credential.** The credential stays in memory and dies
 with the process.

@@ -20,6 +20,7 @@ import {
   MAX_DEADLINE_HOURS,
   noteRequest,
   type PingResult,
+  pingNow,
   register,
   release,
   setBearerSource,
@@ -417,4 +418,115 @@ test('the reset seam empties the registry and the wired seams', () => {
   armed();
   _resetKeepalive();
   assert.deepEqual(snapshot(), []);
+});
+
+// ------------------------------------------------- what the last ping actually read
+
+test('a successful ping records all four token counts, not the cache read alone', async () => {
+  armed();
+  setPingTransport(async () => ({
+    statusCode: 200,
+    inputTokens: 240,
+    cacheCreationTokens: 0,
+    cacheReadTokens: 31_402,
+    outputTokens: 1,
+  }));
+  await sweepOnce(3_000_000);
+
+  const last = snapshot()[0]?.lastPing;
+  assert.ok(last, 'expected the ping to be recorded');
+  assert.equal(last.statusCode, 200);
+  assert.equal(last.inputTokens, 240);
+  assert.equal(last.cacheCreationTokens, 0);
+  assert.equal(last.cacheReadTokens, 31_402);
+  assert.equal(last.outputTokens, 1);
+  assert.equal(last.at, 3_000_000, 'measured from the instant the ping began');
+});
+
+test('a refused ping is recorded too, which is the case the cumulative count hid', async () => {
+  // A 400 never increments `pingsSent`, so before `lastPing` it left no trace at all —
+  // indistinguishable from a ping that was never due.
+  armed();
+  setPingTransport(async () => ({ statusCode: 400, cacheReadTokens: 0 }));
+  await sweepOnce(3_000_000);
+
+  const entry = snapshot()[0];
+  assert.equal(entry?.pingsSent, 0, 'a refusal is still not a ping sent');
+  assert.equal(entry?.lastPing?.statusCode, 400, 'but it is visible');
+});
+
+test('a ping that reads no cache is distinguishable from one that reported no usage', async () => {
+  armed();
+  setPingTransport(async () => ({ statusCode: 200, inputTokens: 31_000, cacheReadTokens: 0 }));
+  await sweepOnce(3_000_000);
+  assert.equal(snapshot()[0]?.lastPing?.inputTokens, 31_000, 'paid for the prefix, read none of it');
+
+  armed();
+  setPingTransport(async () => ({ statusCode: 200, cacheReadTokens: 0 }));
+  await sweepOnce(3_000_000);
+  assert.equal(snapshot()[0]?.lastPing?.inputTokens, 0, 'reported nothing either way');
+});
+
+// --------------------------------------------------------- the forced ping (pingNow)
+
+test('pingNow sends outside the padded schedule and answers what came back', async () => {
+  armed();
+  setPingTransport(async () => okPing(12_345));
+
+  // Far short of 83% of the hour this body asks for: the sweep would send nothing here.
+  const result = await pingNow('sess-1', 60_000);
+
+  assert.equal(result.ok, true);
+  assert.equal(result.state, 'armed');
+  assert.equal(result.lastPing?.cacheReadTokens, 12_345);
+  assert.equal(snapshot()[0]?.pingsSent, 1);
+});
+
+test('a forced ping moves lastActivity, so the next scheduled one is measured from it', async () => {
+  armed();
+  setPingTransport(async () => okPing());
+  await pingNow('sess-1', 60_000);
+
+  // 83% of an hour after the forced ping, not after the registration.
+  await sweepOnce(60_000 + 2_000_000);
+  assert.equal(snapshot()[0]?.pingsSent, 1, 'not yet due');
+  await sweepOnce(60_000 + 3_000_000);
+  assert.equal(snapshot()[0]?.pingsSent, 2, 'due, measured from the forced ping');
+});
+
+test('pingNow refuses rather than pinging what the sweep would not have pinged', async () => {
+  _resetKeepalive();
+  setBearerSource(() => 'Bearer fresh');
+  setPingTransport(async () => okPing());
+
+  const unknown = await pingNow('nobody');
+  assert.equal(unknown.ok, false);
+  assert.equal(unknown.state, undefined, 'no state at all is how the endpoint tells a 404 from a 409');
+  assert.match(String(unknown.reason), /no such registration/);
+
+  register({ sessionKey: 'sess-1', hours: 1, now: 0 });
+  const pending = await pingNow('sess-1', 1_000);
+  assert.equal(pending.ok, false);
+  assert.equal(pending.state, 'pending');
+  assert.match(String(pending.reason), /pending/);
+
+  release('sess-1');
+  const stopped = await pingNow('sess-1', 2_000);
+  assert.equal(stopped.ok, false);
+  assert.equal(stopped.state, 'stopped');
+});
+
+test('pingNow refuses past the deadline and with no credential for the account', async () => {
+  armed();
+  setPingTransport(async () => okPing());
+  const late = await pingNow('sess-1', HOUR + 1);
+  assert.equal(late.ok, false);
+  assert.match(String(late.reason), /deadline/);
+
+  armed();
+  setBearerSource(() => null);
+  const uncredentialed = await pingNow('sess-1', 60_000);
+  assert.equal(uncredentialed.ok, false);
+  assert.match(String(uncredentialed.reason), /credential/);
+  assert.equal(snapshot()[0]?.pingsSent, 0, 'nothing was sent');
 });

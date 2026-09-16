@@ -35,9 +35,11 @@ import {
   extractSession,
   isLoopbackAddress,
   isWarmControlPath,
+  isWarmPingPath,
   noteWarmRequest,
   WARM_STATUS_FILE,
   warmControl,
+  warmPingControl,
   warmSessionKey,
   warmStatusDocument,
   writeWarmStatus,
@@ -449,6 +451,124 @@ test('an api key is still ignored, by account as well as globally', () => {
 
   assert.equal(hasAuth(), false);
   assert.equal(bearerForAccount('acc-a'), null);
+});
+
+// ------------------------------------------------------------------ the forced ping
+
+test('the ping sub-path is a control path, and a lookalike is not', () => {
+  assert.equal(isWarmControlPath('/__warm/ping'), true);
+  assert.equal(isWarmControlPath('/__warm/ping?sessionId=sess-1'), true);
+  assert.equal(isWarmPingPath('/__warm/ping'), true);
+  assert.equal(isWarmPingPath('/__warm'), false, 'the plain path is still the register/list/delete one');
+  assert.equal(isWarmControlPath('/__warm/pinger'), false);
+});
+
+test('the forced ping is loopback-only too, and refuses before it reaches the registry', async () => {
+  reset();
+  const reply = await warmPingControl({
+    method: 'POST',
+    url: '/__warm/ping',
+    remoteAddress: '203.0.113.9',
+    body: JSON.stringify({ sessionId: 'sess-1' }),
+  });
+
+  assert.equal(reply.statusCode, 403);
+  assert.match(String(reply.payload.error), /loopback/);
+  assert.equal(reply.changed, false);
+});
+
+/** A forced-ping call from loopback, as `handle()` would hand one over. */
+const pingCall = (body?: JsonValue, options: { method?: string; url?: string } = {}) =>
+  warmPingControl({
+    method: options.method ?? 'POST',
+    url: options.url ?? '/__warm/ping',
+    remoteAddress: LOOPBACK,
+    body: body === undefined ? '' : JSON.stringify(body),
+  });
+
+test('a session the registry never held is 404, and one that cannot ping yet is 409', async () => {
+  reset();
+  const missing = await pingCall({ sessionId: 'nobody' });
+  assert.equal(missing.statusCode, 404);
+
+  call('POST', { sessionId: 'sess-1', hours: 1 });
+  const pending = await pingCall({ sessionId: 'sess-1' });
+  assert.equal(pending.statusCode, 409, 'it exists, it just has no body to replay yet');
+  assert.equal(pending.payload.state, 'pending');
+  assert.match(String(pending.payload.error), /pending/);
+});
+
+test('a forced ping reports the counts and reads them as a verdict', async () => {
+  reset();
+  // `reset()` clears the wired seams, so the bearer has to be put back before a ping can
+  // borrow one — exactly as the scheduled-ping tests above do it.
+  setBearerSource(() => 'Bearer live');
+  call('POST', { sessionId: 'sess-1', hours: 1 });
+  noteWarmRequest({
+    sessionKey: 'sess-1',
+    account: 'acc-1',
+    reqJson: plainBody(),
+    headers: {},
+    startedAt: 0,
+  });
+
+  setPingTransport(async () => ({ statusCode: 200, inputTokens: 210, cacheReadTokens: 48_000, outputTokens: 1 }));
+  const hit = await pingCall({ sessionId: 'sess-1' });
+  assert.equal(hit.statusCode, 200);
+  assert.equal(hit.payload.verdict, 'cache-hit');
+  assert.equal(hit.changed, true, 'the mirror is now stale');
+
+  // The reading this endpoint exists for: billed for the prefix, read none of it.
+  setPingTransport(async () => ({ statusCode: 200, inputTokens: 31_000, cacheReadTokens: 0 }));
+  const paid = await pingCall({ sessionId: 'sess-1' });
+  assert.equal(paid.payload.verdict, 'paid-full-price');
+
+  // A 2xx carrying no usage is a fault in the reading, not a verdict on the cache.
+  setPingTransport(async () => ({ statusCode: 200, cacheReadTokens: 0 }));
+  const silent = await pingCall({ sessionId: 'sess-1' });
+  assert.equal(silent.payload.verdict, 'no-usage-reported');
+
+  setPingTransport(async () => ({ statusCode: 500, cacheReadTokens: 0 }));
+  const refused = await pingCall({ sessionId: 'sess-1' });
+  assert.equal(refused.payload.verdict, 'refused');
+});
+
+test('the ping sub-path takes POST alone, and needs a session id', async () => {
+  reset();
+  assert.equal((await pingCall(undefined, { method: 'GET' })).statusCode, 405);
+  assert.equal((await pingCall(undefined, { method: 'DELETE' })).statusCode, 405);
+  assert.equal((await pingCall({})).statusCode, 400);
+  assert.equal((await pingCall(undefined, { url: '/__warm/ping?sessionId=sess-9' })).statusCode, 404, 'read off query');
+});
+
+test('warm.json carries the last ping as counts, and still never a body or a credential', async () => {
+  reset();
+  setBearerSource(() => `Bearer ${SECRET_MARKER}`);
+  call('POST', { sessionId: 'sess-1', hours: 1 });
+  noteWarmRequest({
+    sessionKey: 'sess-1',
+    account: 'acc-1',
+    reqJson: { ...plainBody(), system: BODY_MARKER },
+    headers: { 'user-agent': SECRET_MARKER },
+    startedAt: 0,
+  });
+  setPingTransport(async () => ({ statusCode: 200, inputTokens: 88, cacheReadTokens: 4_000, outputTokens: 1 }));
+  await pingCall({ sessionId: 'sess-1' });
+
+  const doc = warmStatusDocument(1_000);
+  const row = rowsOf(doc)[0];
+  assert.ok(row);
+  // SAFETY: `pingReport` builds `lastPing` as a plain object of counts, exactly as
+  // `rowsOf` above relies on `entries` being an array of plain objects.
+  const lastPing = row.lastPing as Record<string, JsonValue> | undefined;
+  assert.ok(lastPing, 'the row carries the ping');
+  assert.equal(lastPing.cacheReadTokens, 4_000);
+  assert.equal(lastPing.inputTokens, 88);
+  assert.equal(row.lastPingVerdict, 'cache-hit');
+
+  const serialized = JSON.stringify(doc);
+  assert.equal(serialized.includes(BODY_MARKER), false, 'no body reaches the mirror');
+  assert.equal(serialized.includes(SECRET_MARKER), false, 'no credential or stored header does either');
 });
 
 // --------------------------------------------------------------- the CI enumeration

@@ -160,6 +160,8 @@ interface Entry {
   pingsSent: number;
   /** Cumulative `cache_read_input_tokens` this entry's own pings have read. */
   cacheReadTokens: number;
+  /** The last ping's own counts, or null before one has been sent. */
+  lastPing: LastPing | null;
   consecutiveFailures: number;
   outcome: KeepaliveOutcome | null;
 }
@@ -179,13 +181,59 @@ export interface EntrySnapshot {
   registeredAt: number;
   pingsSent: number;
   cacheReadTokens: number;
+  lastPing: LastPing | null;
   outcome: KeepaliveOutcome | null;
 }
 
-/** What one ping came back with. */
+/**
+ * What one ping came back with.
+ *
+ * `cacheReadTokens` is required because every caller has always reported it; the other
+ * three counts are optional so a transport a test stands in — which cares about one
+ * number — stays a plain object literal rather than growing three zeroes.
+ */
 export interface PingResult {
   statusCode: number;
   cacheReadTokens: number;
+  inputTokens?: number;
+  cacheCreationTokens?: number;
+  outputTokens?: number;
+}
+
+/**
+ * The whole reply to the last ping this entry sent, counts and status code.
+ *
+ * **This is the evidence the feature produces, and before it there was none.** A ping's
+ * response body is read for its token counts and dropped — deliberately, since that is
+ * what keeps a ping out of the audit corpus (ADR 0077 §1) — so a cumulative
+ * `cacheReadTokens` reading zero left nothing to inspect and a padded interval's wait
+ * before the next attempt. Recorded for **every** reply rather than for a successful one,
+ * because the status code of a refused ping is the most diagnostic field here.
+ *
+ * **Reading it.** A large `inputTokens` beside a zero `cacheReadTokens` means the ping
+ * reached the upstream and paid for the prefix without reading the cache — the feature is
+ * cost with no benefit, and the registration is worth releasing. A large
+ * `cacheReadTokens` means the ping is doing its job. Both zero with a 2xx means the reply
+ * carried no `usage` this could read, which is a reporting fault rather than a verdict on
+ * the cache.
+ */
+export interface LastPing {
+  /** When the ping *began* — the same instant its effect on the cache is measured from. */
+  at: number;
+  statusCode: number;
+  inputTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
+  outputTokens: number;
+}
+
+/** What {@link pingNow} answers: the ping it sent, or why it sent none. */
+export interface ForcedPingResult {
+  ok: boolean;
+  /** Why the ping was refused; absent on success. */
+  reason?: string;
+  state?: KeepaliveState;
+  lastPing?: LastPing | null;
 }
 
 /** The upstream call a ping makes, as a seam a test can stand in for. */
@@ -447,6 +495,7 @@ export function register({ sessionKey, hours, now = Date.now() }: RegisterOption
     state: 'pending',
     pingsSent: 0,
     cacheReadTokens: 0,
+    lastPing: null,
     consecutiveFailures: 0,
     outcome: null,
   });
@@ -505,6 +554,7 @@ export function snapshot(): EntrySnapshot[] {
     registeredAt: entry.registeredAt,
     pingsSent: entry.pingsSent,
     cacheReadTokens: entry.cacheReadTokens,
+    lastPing: entry.lastPing,
     outcome: entry.outcome,
   }));
 }
@@ -580,6 +630,17 @@ async function sendPing(entry: Entry, bearer: string, startedAt: number): Promis
   }
 
   const status = result.statusCode;
+  // Recorded before the branching below, so a refused ping is as visible as a successful
+  // one. A 400 that never increments `pingsSent` used to leave no trace at all; its status
+  // code is the single most diagnostic thing this module can report.
+  entry.lastPing = {
+    at: startedAt,
+    statusCode: status,
+    inputTokens: result.inputTokens ?? 0,
+    cacheCreationTokens: result.cacheCreationTokens ?? 0,
+    cacheReadTokens: result.cacheReadTokens,
+    outputTokens: result.outputTokens ?? 0,
+  };
   if (status === 401 || status === 403) {
     // Named and reported on its own. A credential expiry is not an upstream wobble,
     // and laundering it into the failure counter is the silent failure ADR 0076 names.
@@ -601,6 +662,42 @@ async function sendPing(entry: Entry, bearer: string, startedAt: number): Promis
   // Measured from the instant the ping *began*, which is where the upstream cache's own
   // lifetime starts too.
   entry.lastActivity = startedAt;
+}
+
+/**
+ * Send one ping for a named entry now, outside the padded schedule.
+ *
+ * **Why this exists.** A ping's reply is read for its token counts and dropped, so those
+ * counts are the only evidence the feature produces — and when they read zero there is
+ * nothing left to inspect and a padded interval's wait before another chance to look.
+ * This turns that measurement into one call.
+ *
+ * **Every guard the sweep applies still applies.** A stopped entry, one that never armed,
+ * one past its deadline, one with no bearer for its account: each is refused with a
+ * reason rather than pinged. What this skips is {@link isDue} and nothing else.
+ *
+ * A forced ping moves `lastActivity` exactly as a scheduled one does. That is the ping's
+ * own effect on the cached prefix's lifetime rather than a side effect of forcing it, so
+ * the next scheduled ping is correctly measured from here.
+ */
+export async function pingNow(sessionKey: string, now = Date.now()): Promise<ForcedPingResult> {
+  const entry = entries.get(sessionKey);
+  if (entry === undefined) return { ok: false, reason: 'no such registration' };
+  if (entry.state === 'stopped') {
+    return { ok: false, reason: 'the registration has stopped', state: entry.state };
+  }
+  if (entry.state === 'pending') {
+    return { ok: false, reason: 'the registration is pending — no request has matched it yet', state: entry.state };
+  }
+  if (now >= entry.deadline) {
+    return { ok: false, reason: 'the registration is past its deadline', state: entry.state };
+  }
+  const bearer = bearerSource(entry.account);
+  if (bearer === null) {
+    return { ok: false, reason: 'no credential is held for this account', state: entry.state };
+  }
+  await sendPing(entry, bearer, now);
+  return { ok: true, state: entry.state, lastPing: entry.lastPing };
 }
 
 /** Count one failure, and retire the entry on the second in a row. */
@@ -639,7 +736,7 @@ function httpsPing({ body, headers }: { body: string; headers: StoredHeaders }):
         response.on('end', () => {
           resolve({
             statusCode: response.statusCode ?? 0,
-            cacheReadTokens: readCacheTokens(Buffer.concat(chunks).toString('utf8')),
+            ...readUsage(Buffer.concat(chunks).toString('utf8')),
           });
         });
         response.on('error', reject);
@@ -651,8 +748,20 @@ function httpsPing({ body, headers }: { body: string; headers: StoredHeaders }):
   });
 }
 
-/** `usage.cache_read_input_tokens` off a reply, or 0 when it says nothing useful. */
-function readCacheTokens(text: string): number {
+/**
+ * The four token counts off a reply's `usage`, each 0 when it says nothing useful.
+ *
+ * All four rather than the cache-read alone: read together they say whether a ping that
+ * came back 2xx actually read the cache, which the cache-read count cannot say by itself —
+ * zero beside a large `inputTokens` is a ping paying full price, and zero beside a zero is
+ * a reply carrying no usage at all.
+ */
+function readUsage(text: string): Omit<PingResult, 'statusCode'> {
   const usage = asRecord(asRecord(parseJson(text) ?? undefined)?.usage);
-  return asNumber(usage?.cache_read_input_tokens) ?? 0;
+  return {
+    inputTokens: asNumber(usage?.input_tokens) ?? 0,
+    cacheCreationTokens: asNumber(usage?.cache_creation_input_tokens) ?? 0,
+    cacheReadTokens: asNumber(usage?.cache_read_input_tokens) ?? 0,
+    outputTokens: asNumber(usage?.output_tokens) ?? 0,
+  };
 }
