@@ -54,11 +54,9 @@ function remaining(deadline: string, now: number): string {
 }
 
 /**
- * The transcript to send a warm session's row to, for each session id that has one.
- *
- * One session id covers a whole family — the root transcript and every subagent spawned
- * under it — so the row takes the root: earliest start, ties broken by thread id, which is
- * the order `linkSessions` in core sorts a family into.
+ * The transcript each session id resolves to. One id covers a whole family — the root and
+ * every subagent spawned under it — so the row takes the root: earliest start, ties broken
+ * by thread id, the order `linkSessions` in core sorts a family into.
  */
 function transcriptsBySessionId(sessions: SessionSummary[]): Map<string, SessionSummary> {
   const roots = new Map<string, SessionSummary>();
@@ -77,13 +75,12 @@ function transcriptsBySessionId(sessions: SessionSummary[]): Map<string, Session
 }
 
 /**
- * The row's session: its transcript's own name, linked to that transcript, with the key the
- * registry holds it under underneath.
+ * The row's session, named by its transcript and linked to it.
  *
- * The two ids are different things — the registry knows a session by the id the CLI sent,
- * while a transcript is addressed by the thread id the proxy fingerprints — so the link
- * exists only where a transcript still carries that session id. Transcripts hold roughly
- * today, so an older registration keeps the key alone rather than a link landing nowhere.
+ * The registry knows a session by the id the CLI sent, while a transcript is addressed by
+ * the thread id the proxy fingerprints, so the link exists only where a transcript still
+ * carries that session id. Transcripts hold roughly today, so an older registration keeps
+ * the key alone rather than a link landing nowhere.
  */
 function SessionName({ entry, transcript }: { entry: WarmEntry; transcript: SessionSummary | undefined }) {
   if (!transcript) {
@@ -188,9 +185,8 @@ function Registry({ status, now }: { status: WarmResponse; now: number }) {
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['warm'] }),
   });
 
-  // The transcripts, under the same cache key the Sessions page reads them with, so arriving
-  // from there costs no second fetch. A failure here costs the row its link, never the
-  // registry: the proxy's own answer is what this page is for.
+  // Same cache key the Sessions page reads them with, so arriving from there costs no second
+  // fetch. A failure here costs the row its link, never the registry.
   const sessions = useQuery({ queryKey: ['sessions'], queryFn: getSessions, retry: false });
   const transcripts = useMemo(() => transcriptsBySessionId(sessions.data?.sessions ?? []), [sessions.data]);
 
