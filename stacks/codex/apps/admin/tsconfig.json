@@ -6,22 +6,14 @@
     "types": ["node"],
     "noEmit": true,
     "allowImportingTsExtensions": true,
-    // This workspace holds two React majors on purpose: this admin and claude's are React
-    // 18, ox-alpha's is React 19. pnpm's hidden hoist directory,
-    // `node_modules/.pnpm/node_modules/`, keeps one version of each hoisted package, and
-    // which one it keeps depends on install history rather than on the lockfile - so it
-    // can hold either major. `lucide-react` and `@tanstack/react-router` declare no
-    // `@types/react` of their own, so TypeScript resolves the `react` their `.d.ts` files
-    // import by walking up from `.pnpm/` into that directory and picks up whichever major
-    // landed there, while this package's own source picks up the 18 it declares. Two
-    // `ReactNode` types then meet at the JSX boundary and every icon and `<Link>` fails
-    // TS2786, "cannot be used as a JSX component". That is why the error appears on one
-    // machine and not in CI: it needs an install that happened to hoist React 19.
-    //
-    // Pinning both specifiers here resolves them for the whole program, dependency `.d.ts`
-    // files included, so the types match the React this package actually depends on
-    // whatever pnpm hoisted. Compile-time only - Vite resolves runtime imports itself, and
-    // `@types/*` ship no runtime code, so nothing codex does at run time moves.
+    // pnpm's hidden hoist directory keeps one `@types/react` for the whole store, picked by
+    // install history rather than by the lockfile, and this workspace holds two React majors:
+    // 18 here and in claude's admin, 19 in ox-alpha's. `lucide-react` and
+    // `@tanstack/react-router` declare no `@types/react`, so TypeScript resolves the `react`
+    // their `.d.ts` files import through that directory - and on an install that hoisted 19,
+    // every icon and `<Link>` fails TS2786 while the same source passes on one that hoisted
+    // 18. Pinning both specifiers resolves them for the whole program, dependency `.d.ts`
+    // files included. Compile-time only: Vite resolves runtime imports itself.
     "paths": {
       "react": ["./node_modules/@types/react"],
       "react/*": ["./node_modules/@types/react/*"],

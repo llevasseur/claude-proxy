@@ -6,17 +6,10 @@
     "types": ["node"],
     "noEmit": true,
     "allowImportingTsExtensions": true,
-    // Same pin, and the same reason, as `stacks/codex/apps/admin/tsconfig.json`: this
-    // workspace holds React 18 here and in codex's admin against React 19 in ox-alpha's, and
-    // pnpm's hidden hoist directory keeps whichever major install history left there rather
-    // than the one the lockfile pins. `@tanstack/react-router` declares no `@types/react`, so
-    // TypeScript resolves the `react` its `.d.ts` imports through that directory; on an
-    // install that hoisted 19 every `<Link>` here fails TS2786, "cannot be used as a JSX
-    // component", while the same source typechecks on an install that hoisted 18.
-    //
-    // Pinning both specifiers resolves them for the whole program, dependency `.d.ts` files
-    // included. Compile-time only - Vite resolves runtime imports itself, and `@types/*` ship
-    // no runtime code.
+    // Same pin, same reason, as `stacks/codex/apps/admin/tsconfig.json`: pnpm's hidden hoist
+    // directory can hold React 19 while this package declares 18, and
+    // `@tanstack/react-router` declares no `@types/react` of its own, so every `<Link>` here
+    // fails TS2786 on such an install. Compile-time only.
     "paths": {
       "react": ["./node_modules/@types/react"],
       "react/*": ["./node_modules/@types/react/*"],
