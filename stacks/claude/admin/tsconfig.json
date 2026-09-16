@@ -5,7 +5,17 @@
     "jsx": "react-jsx",
     "types": ["node"],
     "noEmit": true,
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    // Same pin, same reason, as `stacks/codex/apps/admin/tsconfig.json`: pnpm's hidden hoist
+    // directory can hold React 19 while this package declares 18, and
+    // `@tanstack/react-router` declares no `@types/react` of its own, so every `<Link>` here
+    // fails TS2786 on such an install. Compile-time only.
+    "paths": {
+      "react": ["./node_modules/@types/react"],
+      "react/*": ["./node_modules/@types/react/*"],
+      "react-dom": ["./node_modules/@types/react-dom"],
+      "react-dom/*": ["./node_modules/@types/react-dom/*"]
+    }
   },
   "include": ["src", "vite.config.ts"]
 }
