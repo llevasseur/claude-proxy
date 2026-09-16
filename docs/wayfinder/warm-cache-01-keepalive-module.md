@@ -2,7 +2,7 @@
 
 **Wayfinder:** `warm-cache`
 **Branch:** `task/warm-cache-01-keepalive-module`
-**Status:** active
+**Status:** done · 2026-09-15
 
 This ticket is the campaign's spine — ticket 02 codes against what this exports. It adds
 **one new file plus its test** and edits no existing source, which is what keeps it in the
