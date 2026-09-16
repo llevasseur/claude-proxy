@@ -186,11 +186,8 @@ export interface EntrySnapshot {
 }
 
 /**
- * What one ping came back with.
- *
- * `cacheReadTokens` is required because every caller has always reported it; the other
- * three counts are optional so a transport a test stands in — which cares about one
- * number — stays a plain object literal rather than growing three zeroes.
+ * What one ping came back with. The three counts beside `cacheReadTokens` are optional, so
+ * a stubbed transport stays a plain object literal.
  */
 export interface PingResult {
   statusCode: number;
@@ -201,21 +198,15 @@ export interface PingResult {
 }
 
 /**
- * The whole reply to the last ping this entry sent, counts and status code.
+ * The whole reply to the last ping this entry sent. Recorded for **every** reply, not only
+ * a successful one — a refused ping never increments `pingsSent`, so its status code would
+ * otherwise leave no trace.
  *
- * **This is the evidence the feature produces, and before it there was none.** A ping's
- * response body is read for its token counts and dropped — deliberately, since that is
- * what keeps a ping out of the audit corpus (ADR 0077 §1) — so a cumulative
- * `cacheReadTokens` reading zero left nothing to inspect and a padded interval's wait
- * before the next attempt. Recorded for **every** reply rather than for a successful one,
- * because the status code of a refused ping is the most diagnostic field here.
- *
- * **Reading it.** A large `inputTokens` beside a zero `cacheReadTokens` means the ping
- * reached the upstream and paid for the prefix without reading the cache — the feature is
- * cost with no benefit, and the registration is worth releasing. A large
- * `cacheReadTokens` means the ping is doing its job. Both zero with a 2xx means the reply
- * carried no `usage` this could read, which is a reporting fault rather than a verdict on
- * the cache.
+ * **Reading it.** A large `inputTokens` beside a zero `cacheReadTokens` is a ping that paid
+ * for the prefix without reading the cache: cost with no benefit, and the registration is
+ * worth releasing. A large `cacheReadTokens` is a ping doing its job. Both zero on a 2xx
+ * means the reply carried no `usage` this could read — a reporting fault rather than a
+ * verdict on the cache.
  */
 export interface LastPing {
   /** When the ping *began* — the same instant its effect on the cache is measured from. */
@@ -630,9 +621,7 @@ async function sendPing(entry: Entry, bearer: string, startedAt: number): Promis
   }
 
   const status = result.statusCode;
-  // Recorded before the branching below, so a refused ping is as visible as a successful
-  // one. A 400 that never increments `pingsSent` used to leave no trace at all; its status
-  // code is the single most diagnostic thing this module can report.
+  // Before the branching below, so a refusal is recorded as well as a success.
   entry.lastPing = {
     at: startedAt,
     statusCode: status,
@@ -667,18 +656,13 @@ async function sendPing(entry: Entry, bearer: string, startedAt: number): Promis
 /**
  * Send one ping for a named entry now, outside the padded schedule.
  *
- * **Why this exists.** A ping's reply is read for its token counts and dropped, so those
- * counts are the only evidence the feature produces — and when they read zero there is
- * nothing left to inspect and a padded interval's wait before another chance to look.
- * This turns that measurement into one call.
- *
  * **Every guard the sweep applies still applies.** A stopped entry, one that never armed,
- * one past its deadline, one with no bearer for its account: each is refused with a
- * reason rather than pinged. What this skips is {@link isDue} and nothing else.
+ * one past its deadline, one with no bearer for its account: each is refused with a reason
+ * rather than pinged. What this skips is {@link isDue} and nothing else.
  *
- * A forced ping moves `lastActivity` exactly as a scheduled one does. That is the ping's
- * own effect on the cached prefix's lifetime rather than a side effect of forcing it, so
- * the next scheduled ping is correctly measured from here.
+ * A forced ping moves `lastActivity` exactly as a scheduled one does — that is the ping's
+ * own effect on the cached prefix's lifetime — so the next scheduled ping is measured from
+ * here.
  */
 export async function pingNow(sessionKey: string, now = Date.now()): Promise<ForcedPingResult> {
   const entry = entries.get(sessionKey);
@@ -748,14 +732,7 @@ function httpsPing({ body, headers }: { body: string; headers: StoredHeaders }):
   });
 }
 
-/**
- * The four token counts off a reply's `usage`, each 0 when it says nothing useful.
- *
- * All four rather than the cache-read alone: read together they say whether a ping that
- * came back 2xx actually read the cache, which the cache-read count cannot say by itself —
- * zero beside a large `inputTokens` is a ping paying full price, and zero beside a zero is
- * a reply carrying no usage at all.
- */
+/** The four token counts off a reply's `usage`, each 0 when it says nothing useful. */
 function readUsage(text: string): Omit<PingResult, 'statusCode'> {
   const usage = asRecord(asRecord(parseJson(text) ?? undefined)?.usage);
   return {

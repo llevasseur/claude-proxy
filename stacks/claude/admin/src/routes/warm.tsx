@@ -35,8 +35,8 @@ function stateBadge(state: string): string {
 }
 
 /**
- * The badge a ping's verdict wears. `paid-full-price` is the severe one on purpose: it is
- * the reading that says the registration is spending tokens and holding nothing open.
+ * The badge a ping's verdict wears. `paid-full-price` takes the severe one: it means the
+ * registration is spending tokens and holding nothing open.
  */
 function verdictBadge(verdict: string | null): string {
   if (verdict === 'cache-hit') return 'present';
@@ -118,11 +118,8 @@ function SessionName({ entry, transcript }: { entry: WarmEntry; transcript: Sess
 }
 
 /**
- * What the last ping read, which is the only thing that says whether the pings are working.
- *
- * The cumulative `Pings` and `Usage units` beside this count what was spent; they cannot
- * say what it bought. A row reading zero cached tokens against a large input count is a
- * registration paying full price on every ping and holding nothing open.
+ * What the last ping read. `Pings` and `Usage units` beside it count what was spent; this
+ * is the only column that says what it bought.
  */
 function LastPingCell({ entry }: { entry: WarmEntry }) {
   const last = entry.lastPing;

@@ -444,8 +444,7 @@ test('a successful ping records all four token counts, not the cache read alone'
 });
 
 test('a refused ping is recorded too, which is the case the cumulative count hid', async () => {
-  // A 400 never increments `pingsSent`, so before `lastPing` it left no trace at all —
-  // indistinguishable from a ping that was never due.
+  // A 400 never increments `pingsSent`, so without `lastPing` it leaves no trace.
   armed();
   setPingTransport(async () => ({ statusCode: 400, cacheReadTokens: 0 }));
   await sweepOnce(3_000_000);

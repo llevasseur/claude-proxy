@@ -103,8 +103,8 @@ describe('buildWarmStatus', () => {
   });
 
   it('reads no last ping as null rather than as zeroes, on an older proxy or before one fired', async () => {
-    // A proxy that predates this field sends no `lastPing` at all, and a row of zeroes
-    // would read as a ping that happened and measured nothing — the opposite claim.
+    // A row of zeroes would read as a ping that happened and measured nothing — the
+    // opposite claim to no ping having fired.
     const { fetchImpl } = stub(200, { entries: [ROW] });
 
     const status = await buildWarmStatus(BASE, fetchImpl);

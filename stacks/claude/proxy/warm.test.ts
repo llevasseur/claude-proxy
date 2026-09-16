@@ -500,8 +500,7 @@ test('a session the registry never held is 404, and one that cannot ping yet is 
 
 test('a forced ping reports the counts and reads them as a verdict', async () => {
   reset();
-  // `reset()` clears the wired seams, so the bearer has to be put back before a ping can
-  // borrow one — exactly as the scheduled-ping tests above do it.
+  // `reset()` clears the wired seams, so the bearer goes back before a ping can borrow one.
   setBearerSource(() => 'Bearer live');
   call('POST', { sessionId: 'sess-1', hours: 1 });
   noteWarmRequest({

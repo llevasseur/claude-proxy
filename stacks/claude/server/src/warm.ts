@@ -47,11 +47,8 @@ export class WarmProxyError extends Error {
 }
 
 /**
- * What the last ping this entry sent came back with.
- *
- * The cumulative `cacheReadTokens` beside it cannot say why it reads what it reads: zero
- * there is a ping that read no cache, a ping the upstream refused, and a reply carrying no
- * usage at all, indistinguishably. These four counts and the status code separate them.
+ * What the last ping came back with. The cumulative `cacheReadTokens` beside it cannot
+ * separate a ping that read no cache from one the upstream refused; these can.
  */
 export interface WarmLastPing {
   at: string;
@@ -156,11 +153,7 @@ function toEntry(raw: JsonObject): WarmEntry {
   };
 }
 
-/**
- * Narrow the last ping's counts, defaulted field by field like the row around it — a proxy
- * that has not shipped this yet reports no `lastPing` at all, and that costs the cell
- * rather than the page.
- */
+/** Narrow the last ping's counts, defaulted field by field like the row around it. */
 function toLastPing(raw: JsonObject | undefined): WarmLastPing | null {
   if (raw === undefined) return null;
   return {

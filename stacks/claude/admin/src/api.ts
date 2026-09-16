@@ -976,9 +976,8 @@ export interface ChatStopResponse {
  * than fail to type.
  */
 /**
- * What the last ping came back with — the counts a cumulative `cacheReadTokens` cannot
- * separate. Zero cache reads beside a large `inputTokens` is a ping paying full price for
- * a prefix it did not read; beside a zero it is a reply that carried no usage at all.
+ * What the last ping came back with. Zero cache reads beside a large `inputTokens` is a
+ * ping paying full price for a prefix it did not read.
  */
 export interface WarmLastPing {
   at: string;

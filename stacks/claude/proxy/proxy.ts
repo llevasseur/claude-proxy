@@ -802,12 +802,9 @@ const errorMessage = (cause: unknown): string => (cause instanceof Error ? cause
 const WARM_PATH = '/__warm';
 
 /**
- * The sub-path that sends one ping now, rather than at the next padded interval.
- *
- * A path of its own rather than another verb on {@link WARM_PATH}: `POST` there means
- * "register this session", and a forced ping is an action on an entry that already
- * exists. It takes the same loopback rule and the same `sessionId` shapes, so from the
- * outside it reads as one endpoint with one extra thing it can be asked to do.
+ * The sub-path that sends one ping now, rather than at the next padded interval. A path of
+ * its own because `POST /__warm` already means "register this session". Same loopback rule
+ * and same `sessionId` shapes.
  */
 const WARM_PING_PATH = '/__warm/ping';
 
@@ -939,10 +936,8 @@ export function warmControl({ method, url, remoteAddress, body }: WarmControlReq
 }
 
 /**
- * One ping's counts as the control endpoint and the mirror both report them.
- *
- * Counts, a status code and an instant — the same publishable surface ADR 0077 §3 allows
- * everywhere else here, and nothing from the reply body beyond the numbers.
+ * One ping's counts as the control endpoint and the mirror both report them — counts, a
+ * status code and an instant, the publishable surface ADR 0077 §3 allows.
  */
 function pingReport(last: LastPing): JsonObject {
   return {
@@ -957,15 +952,11 @@ function pingReport(last: LastPing): JsonObject {
 }
 
 /**
- * The question a forced ping is asked, answered in one word.
+ * The four counts read as one word:
  *
- * **This is the decision rule, written where the person running the test reads it** rather
- * than left for them to derive from four numbers:
- *
- * - `cache-hit` — the ping read cached tokens. The keepalive is doing its job, and a
- *   cumulative count of zero beside this was a reporting fault.
- * - `paid-full-price` — the ping reached the upstream and was billed for the prefix
- *   without reading the cache. The registration is cost with no benefit; release it.
+ * - `cache-hit` — the ping read cached tokens. The keepalive is doing its job.
+ * - `paid-full-price` — billed for the prefix without reading the cache. The registration
+ *   is cost with no benefit; release it.
  * - `no-usage-reported` — 2xx carrying no token counts this could read. A fault in the
  *   reading rather than a verdict on the cache.
  * - `refused` — the upstream did not answer 2xx. `statusCode` is the whole story.
@@ -980,15 +971,13 @@ function pingVerdict(last: LastPing | null): string {
 
 /**
  * Answer one call to the forced-ping sub-path: send a ping for the named session now and
- * report exactly what came back.
+ * report what came back.
  *
- * Asynchronous, which is why it is separate from {@link warmControl} rather than another
- * verb inside it — that function stays synchronous and every one of its callers stays
- * unchanged.
+ * Separate from {@link warmControl} rather than another verb inside it because this one
+ * waits on the upstream, and that keeps `warmControl` and all its callers synchronous.
  *
  * A refusal is 404 when no registration exists under that id and 409 when one does but is
  * in no state to ping — pending, stopped, past its deadline, or holding no credential.
- * Both carry the reason as prose, exactly as the sibling refusals here do.
  */
 export async function warmPingControl({
   method,
@@ -1143,8 +1132,7 @@ export function warmStatusDocument(now = Date.now()): JsonObject {
       deadline: iso(entry.deadline),
       outcome: warmOutcome(entry),
     };
-    // What the last ping actually read, beside the cumulative count. A `cacheReadTokens`
-    // of zero says nothing on its own about why; these four numbers and the verdict do.
+    // What the last ping read, which the cumulative count cannot say on its own.
     if (entry.lastPing !== null) {
       row.lastPing = pingReport(entry.lastPing);
       row.lastPingVerdict = pingVerdict(entry.lastPing);
