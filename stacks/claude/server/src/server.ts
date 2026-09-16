@@ -739,6 +739,22 @@ async function serveSse<T>(req: http.IncomingMessage, res: http.ServerResponse, 
 }
 
 /**
+ * Whether a captured-body read failed because there is no body to show, rather
+ * than because something on this side broke. Three ways that happens: retention
+ * evicted it, it was never captured, or the capture is there and holds nothing.
+ *
+ * All three answer 404 — for a reader the outcome is identical — and each keeps
+ * its own message. A corrupt capture is none of them and still throws.
+ */
+function isAbsentBody(msg: string): boolean {
+  return (
+    msg.startsWith('request file not found') ||
+    msg.startsWith('request body evicted') ||
+    msg.startsWith('request body empty')
+  );
+}
+
+/**
  * Parse `?days=` as a positive int in [1, 365], default 14 — plus `all`, and the
  * `0` the picker sends for it, meaning every day on record.
  *
@@ -1303,7 +1319,7 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
     } catch (err) {
       const msg = errorMessage(err);
       if (msg.startsWith('invalid request file name')) send(res, 400, { error: msg });
-      else if (msg.startsWith('request file not found') || msg.startsWith('request body evicted')) {
+      else if (isAbsentBody(msg)) {
         send(res, 404, { error: msg });
       } else throw err;
     }
@@ -1324,7 +1340,7 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
     } catch (err) {
       const msg = errorMessage(err);
       if (msg.startsWith('invalid request file name')) send(res, 400, { error: msg });
-      else if (msg.startsWith('request file not found') || msg.startsWith('request body evicted')) {
+      else if (isAbsentBody(msg)) {
         send(res, 404, { error: msg });
       } else if (msg.startsWith('message index out of range')) send(res, 404, { error: msg });
       else throw err;
@@ -1346,7 +1362,7 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
     } catch (err) {
       const msg = errorMessage(err);
       if (msg.startsWith('invalid request file name')) send(res, 400, { error: msg });
-      else if (msg.startsWith('request file not found') || msg.startsWith('request body evicted')) {
+      else if (isAbsentBody(msg)) {
         send(res, 404, { error: msg });
       } else if (msg.startsWith('tool index out of range')) send(res, 404, { error: msg });
       else throw err;

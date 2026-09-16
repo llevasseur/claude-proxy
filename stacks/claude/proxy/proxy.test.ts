@@ -16,6 +16,7 @@ import {
   decodeResponse,
   extractSession,
   INJECTED_REMINDERS,
+  isCapturable,
   stripInjectedReminders,
   stripWithheldTools,
   sumInputTokens,
@@ -1114,4 +1115,17 @@ test('appendSession: a thread nothing spawned records no parentage at all', () =
   assert.equal(selfOut.includes('- parent:'), false);
 
   fs.rmSync(logDir, { recursive: true, force: true });
+});
+
+test('a bodyless request is never written down as a capture triple', () => {
+  // Every zero-byte `.request.txt` on disk is this shape: a health probe aimed at
+  // the proxy's port, with no body to capture.
+  assert.equal(isCapturable('/api/hello', Buffer.alloc(0)), false);
+  assert.equal(isCapturable('/v1/messages', Buffer.alloc(0)), false);
+});
+
+test('a request that carried a body is still captured, count_tokens aside', () => {
+  const body = Buffer.from(JSON.stringify({ model: 'claude-opus-5', messages: [] }), 'utf8');
+  assert.equal(isCapturable('/v1/messages', body), true);
+  assert.equal(isCapturable('/v1/messages/count_tokens', body), false);
 });

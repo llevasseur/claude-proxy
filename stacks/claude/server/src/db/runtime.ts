@@ -1,7 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { asError } from '../errors.js';
 import { type IngestStats, ingest, watchAndIngest } from './ingest.js';
-import { openDb } from './open.js';
+import { type OpenOptions, openDb } from './open.js';
 import { dbSource, fileSource, type SidecarSource } from './source.js';
 
 /**
@@ -70,9 +70,14 @@ export function stopSubstrate(): void {
   handle = null;
 }
 
-/** One-shot ingest against a freshly opened database. The `ingest` script's body. */
-export async function ingestOnce(logDir: string): Promise<IngestStats> {
-  const db = openDb(logDir);
+/**
+ * One-shot ingest against a freshly opened database. The `ingest` script's body.
+ *
+ * `opts` reaches {@link openDb} untouched — the nightly maintain run passes a
+ * `busyTimeoutMs` so it can write while the server holds the same file.
+ */
+export async function ingestOnce(logDir: string, opts: OpenOptions = {}): Promise<IngestStats> {
+  const db = openDb(logDir, opts);
   try {
     return await ingest(db, logDir);
   } finally {

@@ -97,6 +97,21 @@ const estTokens = (bytes: number): number => Math.round(bytes / BYTES_PER_TOKEN)
  * A single turn fires many as housekeeping — pure noise here, so skip them. */
 const isTokenCount = (reqPath: string): boolean => reqPath.includes('count_tokens');
 
+/**
+ * Whether this request is one a capture triple can be written for.
+ *
+ * A request that carried **no body** is not. `.request.txt` would be zero bytes
+ * and the sidecar beside it prices an empty `{}`. Every zero-byte body on disk is
+ * one of these — 32 of 2,735 triples on 2026-07-28, 23 of 1,281 on 2026-09-11,
+ * all `HEAD /api/hello` health probes aimed at the proxy's port. They are still
+ * forwarded upstream; they are just not written down.
+ *
+ * Only the pass-through path consults this. A skim hit cannot be one of these:
+ * `skim.cacheable` requires `/v1/messages` with `stream: true`, which a bodyless
+ * request has no way to say.
+ */
+export const isCapturable = (reqPath: string, body: Buffer): boolean => body.length > 0 && !isTokenCount(reqPath);
+
 const REDACT = new Set(['authorization', 'x-api-key', 'api-key']);
 
 /** Tools the CLI exempts from `permissions.deny` — the deny rule is silently
@@ -1276,6 +1291,11 @@ function handle(req: http.IncomingMessage, res: http.ServerResponse): void {
           ) {
             writeWarmStatus(LOG_DIR);
           }
+
+          // Past the keep-alive on purpose: a bodyless request is one this proxy writes
+          // no capture triple for, but it is still a forwarded request upstream saw, so
+          // the registry above judges it on its own terms.
+          if (!isCapturable(reqPath, body)) return;
 
           try {
             const rawResponse = Buffer.concat(respChunks);

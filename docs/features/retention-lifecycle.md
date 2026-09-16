@@ -174,14 +174,53 @@ is nothing left to derive from, and re-ingesting cannot invent it — the rows a
 ledger as `blob_evicted` stay exactly as they are, underived. The guarantee improves every
 day from the day it ships and no day before it.
 
+### Ingesting against a running server
+
+Both ingest passes — step 0.5 and the levelling pass after eviction — write to
+`logs/claude-proxy.db`, and so does claude-server, which is normally **up** when the
+scheduled job fires. WAL lets a reader and a writer share the file; it does not make two
+writers concurrent. So `maintain` lost that race routinely, printed
+`post-eviction ingest skipped: database is locked`, and exited 0 — a run that skipped the
+step that keeps `request_path` honest, reported to the scheduler as a clean one.
+
+Each pass now opens its handle with `busy_timeout = 20000` and retries up to three times.
+The server's writes are per-sidecar and sub-second, so waiting is normally enough. A pass
+that still cannot run **does not abort the night** — the digest prints and the archive is
+already done — but it is recorded, named in a closing `run incomplete` block, and the
+process exits 1.
+
+The timeout is opt-in per handle rather than a property of the database. `DatabaseSync` is
+synchronous, so the same wait inside the server would block its event loop and stall the
+dashboard, to salvage an ingest pass the next file event retries anyway. A second process
+that gets one attempt per night is the opposite trade, and it is the only caller that asks
+for it.
+
 ### The scheduled job
 
 `scripts/com.llevasseur.claude-proxy.maintain.plist` is the reviewable copy of the launchd
-agent: label `com.llevasseur.claude-proxy.maintain`, 21:00 daily, `--apply`, with `LOG_DIR`,
-`RETENTION_DAYS=30` and `TIMEZONE=America/Toronto` pinned in its environment, output to
+agent: label `com.llevasseur.claude-proxy.maintain`, 21:07 daily, output to
 `~/.claude-usage/logs/maintain.log`. It replaces `com.llevasseur.claude-usage-summary`,
 which is unloaded. Losing that job's model-written narrative prose is accepted; the digest
 is the part worth keeping.
+
+It does **not** invoke `maintain` directly. `ProgramArguments` runs
+`~/.claude-usage/bin/maintain-and-compress.sh`, device configuration that lives outside
+this repository, which runs `maintain --apply` and then packs each archived day's `.md` and
+`.request.txt` files into `archive/<day>/renderings.tar.zst` and `bodies.tar.zst`. The
+wrapper exports `LOG_DIR`, `RETENTION_DAYS` and `TIMEZONE`, so they are set in one place
+rather than two that can disagree, and the plist carries only `BODIES_MIN_AGE`.
+
+**`RETENTION_DAYS` is `never` on this device, and that is the configuration the two halves
+require of each other.** Compressing bodies and evicting them at 30 days are opposite
+intentions; a plist pinning `RETENTION_DAYS=30` would delete exactly what the second half
+of its own job exists to keep. The window in the rest of this document still describes what
+the command does — it is simply turned off here, as [Keeping everything, on
+purpose](#keeping-everything-on-purpose) allows.
+
+**Read `launchctl list com.llevasseur.claude-proxy.maintain` for the last exit status.** A
+run whose ingest passes could not reach the database exits non-zero rather than printing
+one line and reporting success — see [Ingesting against a running
+server](#ingesting-against-a-running-server).
 
 ## Acceptance criteria
 

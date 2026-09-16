@@ -399,6 +399,26 @@ export async function readArchivedDay(
 const REQUEST_FILE_RE = /^[0-9A-Za-z:_.-]+_anthropic$/;
 
 /**
+ * Parse one captured body, naming an empty capture before `JSON.parse` can.
+ *
+ * A zero-byte `.request.txt` is a real state on disk: the proxy used to write a
+ * full triple for bodyless health probes aimed at its port, so ~1.8% of archived
+ * captures hold nothing. Through `JSON.parse` those read as `Unexpected end of
+ * JSON input` — the one message that cannot tell a capture that never held a body
+ * from a damaged one.
+ *
+ * Applied at every read path — live, archived-loose and unpacked-from-bundle —
+ * because the empty captures pre-date the bundles and are now packed inside them.
+ */
+function parseCapturedBody(text: string, file: string): JsonValue {
+  if (text.trim() === '') throw new Error(`request body empty: ${file}`);
+  // SAFETY: `JSON.parse` is declared `any`, and every value it returns is within
+  // `JsonValue`. Text that will not parse throws out of here, which is the read
+  // failure the callers already handle.
+  return JSON.parse(text) as JsonValue;
+}
+
+/**
  * Read and parse one captured request body, without rendering it for display.
  *
  * Validates `file` against {@link REQUEST_FILE_RE} and confirms the resolved path stays
@@ -419,17 +439,14 @@ export async function readRequestBodyParsed(logDir: string, file: string): Promi
     text = null;
   }
   if (text !== null) {
-    // SAFETY: as in `readSidecars` — `JSON.parse` is declared `any`, and every
-    // value it returns is within `JsonValue`. A body that will not parse throws
-    // out of here, which is the read failure the callers already handle.
-    return JSON.parse(text) as JsonValue;
+    return parseCapturedBody(text, file);
   }
 
   // Slow path: archived, packed, evicted, or never captured.
   const location = await locateRequestBody(logDir, file);
   if (location.status === 'present') {
-    // SAFETY: the archived copy is the same captured body as the live one above.
-    return JSON.parse(await readFile(location.path, 'utf8')) as JsonValue;
+    // The archived copy is the same captured body as the live one above.
+    return parseCapturedBody(await readFile(location.path, 'utf8'), file);
   }
   if (location.status === 'compressed') {
     const packed = await readBundleMember(location.path, location.member, file, 'read');
@@ -437,9 +454,10 @@ export async function readRequestBodyParsed(logDir: string, file: string): Promi
     // the bundle was rewritten between that check and this read. Answer it as
     // the eviction it now is rather than inventing a third outcome.
     if (packed === null) throw new Error(`request body evicted: ${file}`);
-    // SAFETY: a packed body is the same captured text as the loose one above.
-    // Text that will not parse throws out of here, exactly as it does there.
-    return JSON.parse(packed) as JsonValue;
+    // A packed body is the same captured text as the loose one above, empty
+    // members included — the days that hold them were packed before the proxy
+    // stopped writing them.
+    return parseCapturedBody(packed, file);
   }
   if (location.status === 'evicted') throw new Error(`request body evicted: ${file}`);
   throw new Error(`request file not found: ${file}`);
