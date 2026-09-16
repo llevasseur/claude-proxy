@@ -95,7 +95,19 @@ const MAX_CONSECUTIVE_FAILURES = 2;
 /** Above this utilization of Anthropic's own meter, stop rather than spend more. */
 export const DEFAULT_UTILIZATION_STOP = 0.9;
 
-/** Request headers a ping must never replay: the stored credential and anything routing. */
+/**
+ * Request headers a ping must never replay: the stored credential, anything routing, and
+ * `accept-encoding`.
+ *
+ * **Why `accept-encoding` is in this list rather than handled at send time.** `httpsPing`
+ * reads the reply with `Buffer.concat(chunks).toString('utf8')` and has no decompressor to
+ * reach for — this package carries zero runtime dependencies. Replaying Claude Code's own
+ * `accept-encoding: gzip` therefore gets a gzipped reply that {@link readUsage} cannot
+ * parse, so all four token counts come back 0 and a ping that read the cache reports as
+ * having read nothing. Dropping the header asks the upstream for identity encoding, which
+ * is exactly what `forwardHeaders` in `proxy.ts` does to the real forwarded request, and
+ * for the same reason.
+ */
 const DROPPED_HEADERS = new Set([
   'authorization',
   'x-api-key',
@@ -104,6 +116,7 @@ const DROPPED_HEADERS = new Set([
   'content-length',
   'connection',
   'transfer-encoding',
+  'accept-encoding',
 ]);
 
 /** A `tool_choice` of one of these kinds forces a call, which `max_tokens: 0` rejects. */

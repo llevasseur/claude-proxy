@@ -23,6 +23,7 @@ import {
   pingNow,
   register,
   release,
+  type StoredHeaders,
   setBearerSource,
   setPingTransport,
   setUtilizationSource,
@@ -400,6 +401,41 @@ test('storableHeaders drops the credential and the hop-by-hop names', () => {
   });
 
   assert.deepEqual(kept, { 'anthropic-beta': 'oauth-2025-04-20', 'user-agent': 'claude-cli' });
+});
+
+test('storableHeaders never returns accept-encoding, whatever its casing', () => {
+  const kept = storableHeaders({
+    'accept-encoding': 'gzip, deflate, br',
+    'Accept-Encoding': 'gzip',
+    'user-agent': 'claude-cli',
+  });
+
+  assert.deepEqual(Object.keys(kept), ['user-agent']);
+});
+
+test('the headers a ping actually sends carry no accept-encoding', async () => {
+  _resetKeepalive();
+  setBearerSource(() => 'Bearer fresh');
+  register({ sessionKey: 'sess-1', hours: 1, now: 0 });
+  noteRequest({
+    sessionKey: 'sess-1',
+    account: 'acc-1',
+    body: plainBody(),
+    headers: { 'accept-encoding': 'gzip, deflate, br', 'user-agent': 'claude-cli' },
+    startedAt: 0,
+  });
+  const sent: StoredHeaders[] = [];
+  setPingTransport(async ({ headers }) => {
+    sent.push(headers);
+    return okPing();
+  });
+
+  await sweepOnce(3_000_000);
+
+  assert.equal(sent.length, 1, 'expected one ping');
+  const names = Object.keys(sent[0] ?? {}).map((name) => name.toLowerCase());
+  assert.equal(names.includes('accept-encoding'), false);
+  assert.equal(names.includes('user-agent'), true);
 });
 
 test('the snapshot carries counts and reasons, never a body or a credential', async () => {
