@@ -1,8 +1,9 @@
+import { sessionName } from '@agent-proxy/claude-core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { createRoute } from '@tanstack/react-router';
+import { createRoute, Link } from '@tanstack/react-router';
 import { Flame } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { getWarm, releaseWarm, type WarmEntry, type WarmResponse } from '../api';
+import { useEffect, useMemo, useState } from 'react';
+import { getSessions, getWarm, releaseWarm, type SessionSummary, type WarmEntry, type WarmResponse } from '../api';
 import { QueryState } from '../components/QueryState';
 import { fmtAgeShort, fmtDuration, fmtInt, fmtLocalTsShort } from '../format';
 import { rootRoute } from '../route-root';
@@ -50,6 +51,54 @@ function remaining(deadline: string, now: number): string {
   const at = Date.parse(deadline);
   if (Number.isNaN(at)) return '—';
   return at <= now ? 'elapsed' : fmtDuration(at - now);
+}
+
+/**
+ * The transcript to send a warm session's row to, for each session id that has one.
+ *
+ * One session id covers a whole family — the root transcript and every subagent spawned
+ * under it — so the row takes the root: earliest start, ties broken by thread id, which is
+ * the order `linkSessions` in core sorts a family into.
+ */
+function transcriptsBySessionId(sessions: SessionSummary[]): Map<string, SessionSummary> {
+  const roots = new Map<string, SessionSummary>();
+  for (const session of sessions) {
+    if (session.sessionId === null) continue;
+    const held = roots.get(session.sessionId);
+    if (!held) {
+      roots.set(session.sessionId, session);
+      continue;
+    }
+    const rank =
+      (session.started ?? '').localeCompare(held.started ?? '') || session.threadId.localeCompare(held.threadId);
+    if (rank < 0) roots.set(session.sessionId, session);
+  }
+  return roots;
+}
+
+/**
+ * The row's session: its transcript's own name, linked to that transcript, with the key the
+ * registry holds it under underneath.
+ *
+ * The two ids are different things — the registry knows a session by the id the CLI sent,
+ * while a transcript is addressed by the thread id the proxy fingerprints — so the link
+ * exists only where a transcript still carries that session id. Transcripts hold roughly
+ * today, so an older registration keeps the key alone rather than a link landing nowhere.
+ */
+function SessionName({ entry, transcript }: { entry: WarmEntry; transcript: SessionSummary | undefined }) {
+  if (!transcript) {
+    return <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-4)' }}>{entry.sessionKey}</span>;
+  }
+  return (
+    <>
+      <Link to='/sessions/$id' params={{ id: transcript.threadId }} className='link'>
+        {sessionName(transcript) ?? transcript.threadId}
+      </Link>
+      <div className='muted' style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-3)' }}>
+        {entry.sessionKey}
+      </div>
+    </>
+  );
 }
 
 export function WarmPage() {
@@ -139,6 +188,12 @@ function Registry({ status, now }: { status: WarmResponse; now: number }) {
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['warm'] }),
   });
 
+  // The transcripts, under the same cache key the Sessions page reads them with, so arriving
+  // from there costs no second fetch. A failure here costs the row its link, never the
+  // registry: the proxy's own answer is what this page is for.
+  const sessions = useQuery({ queryKey: ['sessions'], queryFn: getSessions, retry: false });
+  const transcripts = useMemo(() => transcriptsBySessionId(sessions.data?.sessions ?? []), [sessions.data]);
+
   if (status.entries.length === 0) {
     return (
       <div className='card'>
@@ -177,9 +232,7 @@ function Registry({ status, now }: { status: WarmResponse; now: number }) {
               return (
                 <tr key={entry.sessionKey}>
                   <td>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-4)' }}>
-                      {entry.sessionKey}
-                    </span>
+                    <SessionName entry={entry} transcript={transcripts.get(entry.sessionKey)} />
                     {entry.outcome !== null && (
                       <div className='muted' style={{ fontSize: 'var(--text-3)' }}>
                         {entry.outcome}
