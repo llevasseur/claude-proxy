@@ -1,8 +1,9 @@
+import { sessionDisplayName } from '@agent-proxy/claude-core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { createRoute } from '@tanstack/react-router';
+import { createRoute, Link } from '@tanstack/react-router';
 import { Flame } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { getWarm, releaseWarm, type WarmEntry, type WarmResponse } from '../api';
+import { useEffect, useMemo, useState } from 'react';
+import { getSessions, getWarm, releaseWarm, type SessionSummary, type WarmEntry, type WarmResponse } from '../api';
 import { QueryState } from '../components/QueryState';
 import { fmtAgeShort, fmtDuration, fmtInt, fmtLocalTsShort } from '../format';
 import { rootRoute } from '../route-root';
@@ -50,6 +51,59 @@ function remaining(deadline: string, now: number): string {
   const at = Date.parse(deadline);
   if (Number.isNaN(at)) return '—';
   return at <= now ? 'elapsed' : fmtDuration(at - now);
+}
+
+/**
+ * Start order, with a transcript missing its `- started:` header sorted last rather than
+ * first — undated, it must not outrank a dated sibling.
+ */
+function startKey(session: SessionSummary): string {
+  return session.started ?? '￿';
+}
+
+/**
+ * The transcript each session id resolves to. One id covers a whole family — the root and
+ * every subagent spawned under it — so the row takes the earliest start, ties broken by
+ * thread id. Core's own root is whichever transcript ends with no parent, which needs the
+ * node streams this page does not read, so this is the nearest pick the listing supports.
+ */
+function transcriptsBySessionId(sessions: SessionSummary[]): Map<string, SessionSummary> {
+  const roots = new Map<string, SessionSummary>();
+  for (const session of sessions) {
+    if (session.sessionId === null) continue;
+    const held = roots.get(session.sessionId);
+    if (!held) {
+      roots.set(session.sessionId, session);
+      continue;
+    }
+    const rank = startKey(session).localeCompare(startKey(held)) || session.threadId.localeCompare(held.threadId);
+    if (rank < 0) roots.set(session.sessionId, session);
+  }
+  return roots;
+}
+
+/**
+ * The row's session, named by its transcript and linked to it.
+ *
+ * The registry knows a session by the id the CLI sent, while a transcript is addressed by
+ * the thread id the proxy fingerprints, so the link exists only where a transcript still
+ * carries that session id. Transcripts hold roughly today, so an older registration keeps
+ * the key alone rather than a link landing nowhere.
+ */
+function SessionName({ entry, transcript }: { entry: WarmEntry; transcript: SessionSummary | undefined }) {
+  if (!transcript) {
+    return <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-4)' }}>{entry.sessionKey}</span>;
+  }
+  return (
+    <>
+      <Link to='/sessions/$id' params={{ id: transcript.threadId }} className='link'>
+        {sessionDisplayName(transcript)}
+      </Link>
+      <div className='muted' style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-3)' }}>
+        {entry.sessionKey}
+      </div>
+    </>
+  );
 }
 
 export function WarmPage() {
@@ -131,14 +185,6 @@ function Figure({ label, value }: { label: string; value: string }) {
 }
 
 function Registry({ status, now }: { status: WarmResponse; now: number }) {
-  const queryClient = useQueryClient();
-  const release = useMutation({
-    mutationFn: (sessionId: string) => releaseWarm(sessionId),
-    // No optimism: the refetch is what decides the row is gone, so a release the proxy
-    // refused leaves the row exactly where it was rather than blinking it out.
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ['warm'] }),
-  });
-
   if (status.entries.length === 0) {
     return (
       <div className='card'>
@@ -149,12 +195,38 @@ function Registry({ status, now }: { status: WarmResponse; now: number }) {
       </div>
     );
   }
+  return <RegistryTable entries={status.entries} now={now} />;
+}
+
+/** The registered rows, split out so an empty registry runs none of the queries below. */
+function RegistryTable({ entries, now }: { entries: WarmEntry[]; now: number }) {
+  const queryClient = useQueryClient();
+  const release = useMutation({
+    mutationFn: (sessionId: string) => releaseWarm(sessionId),
+    // No optimism: the refetch is what decides the row is gone, so a release the proxy
+    // refused leaves the row exactly where it was rather than blinking it out.
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['warm'] }),
+  });
+
+  // Same cache key the Sessions page reads them with, so arriving from there costs no second
+  // fetch. A failure here costs the row its link, never the registry. The poll runs at the
+  // registry's own cadence only while a row is still unmatched.
+  const sessions = useQuery({
+    queryKey: ['sessions'],
+    queryFn: getSessions,
+    retry: false,
+    refetchInterval: (query) => {
+      const roots = transcriptsBySessionId(query.state.data?.sessions ?? []);
+      return entries.every((entry) => roots.has(entry.sessionKey)) ? false : REFETCH_MS;
+    },
+  });
+  const transcripts = useMemo(() => transcriptsBySessionId(sessions.data?.sessions ?? []), [sessions.data]);
 
   return (
     <div className='card'>
       <div className='card-head'>
         <h2>Sessions</h2>
-        <span className='range'>{status.entries.length} registered</span>
+        <span className='range'>{entries.length} registered</span>
       </div>
       <div className='table-scroll'>
         <table className='table'>
@@ -172,14 +244,12 @@ function Registry({ status, now }: { status: WarmResponse; now: number }) {
             </tr>
           </thead>
           <tbody>
-            {status.entries.map((entry) => {
+            {entries.map((entry) => {
               const pending = release.isPending && release.variables === entry.sessionKey;
               return (
                 <tr key={entry.sessionKey}>
                   <td>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-4)' }}>
-                      {entry.sessionKey}
-                    </span>
+                    <SessionName entry={entry} transcript={transcripts.get(entry.sessionKey)} />
                     {entry.outcome !== null && (
                       <div className='muted' style={{ fontSize: 'var(--text-3)' }}>
                         {entry.outcome}
