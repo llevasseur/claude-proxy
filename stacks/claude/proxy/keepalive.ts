@@ -95,7 +95,16 @@ const MAX_CONSECUTIVE_FAILURES = 2;
 /** Above this utilization of Anthropic's own meter, stop rather than spend more. */
 export const DEFAULT_UTILIZATION_STOP = 0.9;
 
-/** Request headers a ping must never replay: the stored credential and anything routing. */
+/**
+ * Request headers a ping must never replay: the stored credential, anything routing, and
+ * `accept-encoding`.
+ *
+ * **`accept-encoding` is dropped rather than handled at send time**, so the upstream
+ * answers in identity encoding — what `forwardHeaders` in `proxy.ts` does to the real
+ * forwarded request. This package has zero runtime dependencies and so no decompressor:
+ * a gzipped reply leaves {@link readUsage} with nothing to parse, and a ping that read
+ * the cache reports all four token counts as 0.
+ */
 const DROPPED_HEADERS = new Set([
   'authorization',
   'x-api-key',
@@ -104,6 +113,7 @@ const DROPPED_HEADERS = new Set([
   'content-length',
   'connection',
   'transfer-encoding',
+  'accept-encoding',
 ]);
 
 /** A `tool_choice` of one of these kinds forces a call, which `max_tokens: 0` rejects. */
