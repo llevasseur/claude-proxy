@@ -54,10 +54,9 @@ const MESSAGES_PATH = '/v1/messages';
 
 /**
  * How long an entry is held open when a registration names no duration of its own, in
- * hours. ADR 0078 ships this default knowing the measured resume rate sits below
- * break-even. **It is a default and no longer a ceiling** — a caller's `hours` is honoured
- * verbatim, so nothing here bounds an explicit request; ADR 0076's point stands either
- * way, since the real limit in an all-sessions-idle case is the bearer's own lifetime.
+ * hours. A default and not a ceiling: nothing here bounds an explicit `hours`. ADR 0078
+ * ships it knowing the measured resume rate sits below break-even, and ADR 0076 notes the
+ * real limit in an all-sessions-idle case is the bearer's own lifetime.
  */
 export const MAX_DEADLINE_HOURS = 8;
 
@@ -293,8 +292,8 @@ function highestUtilization(payload: JsonValue | null, depth = 0): number | null
  * Answers null for anything that is not a usable duration — a non-finite value, a NaN, a
  * zero or a negative one — because there is no sensible floor to round those up to, and a
  * registration that asked for nonsense should be refused rather than silently given a
- * default it never requested. **Nothing bounds it from above**: a caller asking for 24
- * hours gets 24. See ADR 0078 for why that ceiling was removed and what it costs.
+ * default it never requested. Nothing bounds it from above; ADR 0078 records the removed
+ * ceiling and what it costs.
  */
 export function validateDeadlineHours(hours: number | null | undefined): number | null {
   if (hours == null || !Number.isFinite(hours) || hours <= 0) return null;
