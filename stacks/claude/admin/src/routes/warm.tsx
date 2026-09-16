@@ -210,8 +210,7 @@ function RegistryTable({ entries, now }: { entries: WarmEntry[]; now: number }) 
 
   // Same cache key the Sessions page reads them with, so arriving from there costs no second
   // fetch. A failure here costs the row its link, never the registry. The poll runs at the
-  // registry's own cadence only while a row is still unmatched — a transcript lands seconds
-  // after the session registers, and rescanning the corpus past that buys nothing.
+  // registry's own cadence only while a row is still unmatched.
   const sessions = useQuery({
     queryKey: ['sessions'],
     queryFn: getSessions,
