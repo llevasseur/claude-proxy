@@ -15,7 +15,6 @@ import test from 'node:test';
 import {
   _resetKeepalive,
   buildPingBody,
-  clampDeadlineHours,
   DEFAULT_CACHE_TTL_MS,
   deriveTtlMs,
   MAX_DEADLINE_HOURS,
@@ -29,6 +28,7 @@ import {
   snapshot,
   storableHeaders,
   sweepOnce,
+  validateDeadlineHours,
 } from './keepalive.ts';
 import type { RequestBody } from './wire.ts';
 
@@ -149,30 +149,30 @@ test('falls back to the documented default when no cache_control carries a TTL',
   assert.equal(deriveTtlMs(null), DEFAULT_CACHE_TTL_MS);
 });
 
-// -------------------------------------------------------------------- the clamp
+// --------------------------------------------------------------- the hours validator
 
-test('clamps a value above the ceiling down to eight hours', () => {
-  assert.equal(clampDeadlineHours(24), MAX_DEADLINE_HOURS);
-  assert.equal(clampDeadlineHours(8.5), MAX_DEADLINE_HOURS);
-  assert.equal(clampDeadlineHours(Number.MAX_SAFE_INTEGER), MAX_DEADLINE_HOURS);
+test('passes a value above the old eight-hour ceiling through unchanged', () => {
+  assert.equal(validateDeadlineHours(24), 24);
+  assert.equal(validateDeadlineHours(8.5), 8.5);
+  assert.equal(validateDeadlineHours(Number.MAX_SAFE_INTEGER), Number.MAX_SAFE_INTEGER);
 });
 
-test('passes a value inside the range through untouched', () => {
-  assert.equal(clampDeadlineHours(0.5), 0.5);
-  assert.equal(clampDeadlineHours(8), 8);
+test('passes a small value through untouched', () => {
+  assert.equal(validateDeadlineHours(0.5), 0.5);
+  assert.equal(validateDeadlineHours(MAX_DEADLINE_HOURS), MAX_DEADLINE_HOURS);
 });
 
 test('refuses a value below the floor', () => {
-  assert.equal(clampDeadlineHours(0), null);
-  assert.equal(clampDeadlineHours(-1), null);
+  assert.equal(validateDeadlineHours(0), null);
+  assert.equal(validateDeadlineHours(-1), null);
 });
 
 test('refuses a non-finite value', () => {
-  assert.equal(clampDeadlineHours(Number.NaN), null);
-  assert.equal(clampDeadlineHours(Number.POSITIVE_INFINITY), null);
-  assert.equal(clampDeadlineHours(Number.NEGATIVE_INFINITY), null);
-  assert.equal(clampDeadlineHours(null), null);
-  assert.equal(clampDeadlineHours(undefined), null);
+  assert.equal(validateDeadlineHours(Number.NaN), null);
+  assert.equal(validateDeadlineHours(Number.POSITIVE_INFINITY), null);
+  assert.equal(validateDeadlineHours(Number.NEGATIVE_INFINITY), null);
+  assert.equal(validateDeadlineHours(null), null);
+  assert.equal(validateDeadlineHours(undefined), null);
 });
 
 // ------------------------------------------------------------------ the registry
