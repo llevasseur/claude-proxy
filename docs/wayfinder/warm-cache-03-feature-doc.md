@@ -2,7 +2,7 @@
 
 **Wayfinder:** `warm-cache`
 **Branch:** `task/warm-cache-03-feature-doc`
-**Status:** active
+**Status:** done · 2026-09-15
 
 Touches only `docs/`, so it shares wave 1 with tickets 01 and 04 without colliding.
 

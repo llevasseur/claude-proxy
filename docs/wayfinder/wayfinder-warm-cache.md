@@ -22,6 +22,32 @@ scope: claude
 > was asked. The final ticket `warm-cache-zz` deletes them all; this map goes when the wayfinder
 > closes. The durable output is the merged code and the repository's feature and spec docs.
 
+## Standing — 2026-09-15: incomplete, and both blockers need a human
+
+Two of four tickets landed on `wayfinder/warm-cache`. **Neither remaining blocker is a
+problem with the work, and neither can be cleared by an agent** — both need a human at this
+device.
+
+- **Ticket 02** — complete and passing (157/157 proxy tests), five files staged, **zero
+  commits**. `git commit` fails with `1Password: failed to fill whole buffer` /
+  `fatal: failed to write commit object`, an unapproved signing prompt. AGENTS.md forbids
+  the three workarounds (rewriting the commit, `--no-gpg-sign`, changing signing config),
+  and the one blessed retry was spent and hit the identical prompt. **The worktree at
+  `.claude/worktrees/task-warm-cache-02-proxy-wiring-and-status` holds the only copy of
+  that work — do not remove it.**
+- **Ticket 04** — built, reviewed, green, and `MERGEABLE` as
+  [llevasseur/my-command#146](https://github.com/llevasseur/my-command/pull/146). The merge
+  was refused by the auto-mode classifier, and a refused merge is final.
+
+**The campaign PR must not be merged while ticket 02 is unlanded**, because the feature is
+inert without it: ticket 01 shipped the module and nothing calls it yet.
+
+**The `zz` ticket has deliberately not been run.** It deletes every plan in this directory,
+including ticket 02's — which is the resume path for the one ticket still outstanding.
+Retiring the scaffolding now is what would make this campaign unresumable.
+
+Resume with `/dev --resume warm-cache` once the signing prompt is approved.
+
 ## Scope
 
 **In scope.** A keep-alive module in claude's proxy; a 127.0.0.1-only control endpoint in
@@ -64,10 +90,8 @@ Lanes are file-scoped so nothing collides on the shared base branch.
 
 | # | Task | Plan | Branch | Status | Note |
 |---|------|------|--------|--------|------|
-| 01 | keepalive-module | [warm-cache-01-keepalive-module](warm-cache-01-keepalive-module.md) | `task/warm-cache-01-keepalive-module` | todo | |
-| 02 | proxy-wiring-and-status | [warm-cache-02-proxy-wiring-and-status](warm-cache-02-proxy-wiring-and-status.md) | `task/warm-cache-02-proxy-wiring-and-status` | todo | |
-| 03 | feature-doc | [warm-cache-03-feature-doc](warm-cache-03-feature-doc.md) | `task/warm-cache-03-feature-doc` | todo | |
-| 04 | warm-command | [warm-cache-04-warm-command](warm-cache-04-warm-command.md) | `task/warm-cache-04-warm-command` | todo | |
+| 02 | proxy-wiring-and-status | [warm-cache-02-proxy-wiring-and-status](warm-cache-02-proxy-wiring-and-status.md) | `task/warm-cache-02-proxy-wiring-and-status` | paused | Work complete and passing (157/157 proxy tests), five files staged, zero commits. Blocked on an unapproved 1Password signing prompt on this device. Worktree left standing at `.claude/worktrees/task-warm-cache-02-proxy-wiring-and-status` — it holds the only copy. Resume: approve the prompt, then `git commit -F /tmp/warm-cache-02-commit.txt` in that worktree, then `/clean`, `/pr`, retarget to `wayfinder/warm-cache`, merge. |
+| 04 | warm-command | [warm-cache-04-warm-command](warm-cache-04-warm-command.md) | `feat/warm-command` (in `my-command`) | paused | Built, reviewed, green. PR llevasseur/my-command#146 is OPEN and MERGEABLE; the merge was refused by the auto-mode classifier, which is final. Needs a human: `gh pr merge 146 --squash`, then `my-command-tools cleanup --branch feat/warm-command`. |
 | zz | retire-done-plans | [warm-cache-zz-retire-done-plans](warm-cache-zz-retire-done-plans.md) | `task/warm-cache-zz-retire-done-plans` | todo | Final ticket — deletes every plan. Execute last. |
 
 <!--
@@ -91,6 +115,44 @@ nothing else removes them, so without it they outlive the campaign permanently.
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 01 — keepalive-module · 2026-09-15 · PR #337
+
+Added `stacks/claude/proxy/keepalive.ts` (657 lines) and `keepalive.test.ts` (420 lines,
+37 cases), merged into `wayfinder/warm-cache`. Zero runtime dependencies, in-memory only.
+
+Named off the colliding `warm` identifier as ADR 0077 §5 requires, with the distinction
+against `cache-breakpoint.ts`'s `warmSessions` stated in the file header. Exports
+`buildPingBody`, `deriveTtlMs`, `clampDeadlineHours`, `startKeepalive`, `noteRequest`,
+`setBearerSource`, `usageLiveUtilization`, and `_resetKeepalive`. The ping issues its own
+`https.request`, so there is no enumerated skip list anywhere in the file — the property
+falls out of the architecture, which is what ADR 0077 asked for.
+
+**Deviations worth keeping.** `deriveTtlMs` falls back to a 5-minute default (the API's own
+ephemeral default) when no `cache_control` carries a TTL; the plan required a documented
+fallback without naming one. Seven distinct stop reasons were implemented rather than a
+generic failure path: `deadline`, `unmatched`, `ping-failures`, `rate-limited`,
+`credential-expired`, `usage-limit`, `released`.
+
+**One "Done when" clause was deliberately not met, and ticket 02 closed it:** the plan
+required the new tests to run under the proxy package's own `node --test` script, but that
+script's file list lives in `package.json`, outside this ticket's lane. The ticket reported
+it rather than widening the lane.
+
+### 03 — feature-doc · 2026-09-15 · PR #336
+
+Added `docs/features/keep-a-chat-warm.md` (+254), regenerated `docs/features/index.md`, and
+prepended one `CHANGELOG.md` bullet. Merged into `wayfinder/warm-cache`.
+
+Written on `retention-lifecycle.md`'s model — Summary, a Motivation leading with the
+measurement, Behavior. All seven ADRs 0073–0079 cross-linked by relative path.
+
+**The counter-measurement is not softened**, which was the ticket's sharpest requirement.
+It sits in the Motivation under the heading "The base rate is 9.6%. Break-even is 15.5%.",
+ahead of the usage instructions rather than in a footnote, and states the honest 5.8%–9.6%
+band once the two worthless single-request resumes are discounted, the 9.9-minute median
+lifetime, and that no session lived past 3.6 hours so the 8-hour cap was never exercised by
+the evidence. The sample's limits are restated wherever a number appears.
 
 ## Agent kickoff prompt
 
