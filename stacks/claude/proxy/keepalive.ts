@@ -99,14 +99,11 @@ export const DEFAULT_UTILIZATION_STOP = 0.9;
  * Request headers a ping must never replay: the stored credential, anything routing, and
  * `accept-encoding`.
  *
- * **Why `accept-encoding` is in this list rather than handled at send time.** `httpsPing`
- * reads the reply with `Buffer.concat(chunks).toString('utf8')` and has no decompressor to
- * reach for — this package carries zero runtime dependencies. Replaying Claude Code's own
- * `accept-encoding: gzip` therefore gets a gzipped reply that {@link readUsage} cannot
- * parse, so all four token counts come back 0 and a ping that read the cache reports as
- * having read nothing. Dropping the header asks the upstream for identity encoding, which
- * is exactly what `forwardHeaders` in `proxy.ts` does to the real forwarded request, and
- * for the same reason.
+ * **`accept-encoding` is dropped rather than handled at send time**, so the upstream
+ * answers in identity encoding — what `forwardHeaders` in `proxy.ts` does to the real
+ * forwarded request. This package has zero runtime dependencies and so no decompressor:
+ * a gzipped reply leaves {@link readUsage} with nothing to parse, and a ping that read
+ * the cache reports all four token counts as 0.
  */
 const DROPPED_HEADERS = new Set([
   'authorization',
