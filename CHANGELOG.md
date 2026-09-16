@@ -29,7 +29,7 @@ This project has not cut a release yet, so everything below sits under
 
 ### Changed
 
-- **A warm session's name on the Warm page opens its transcript.** The Session cell showed the raw key the proxy registered the session under; it now shows that session's transcript name, linked to [its Session page](stacks/claude/admin/src/routes/warm.tsx), with the key kept underneath for the Release control. A registration whose transcript this device no longer holds keeps the key alone rather than a link landing nowhere.
+- **A warm session's name on the Warm page opens its transcript.** The Session cell showed the raw key the proxy registered the session under; it now shows that session's transcript name, linked to [its Session page](stacks/claude/admin/src/routes/session-detail.tsx), with the key kept underneath for the Release control. A registration whose transcript this device no longer holds keeps the key alone rather than a link landing nowhere.
 
 - **A warm registration now gets the TTL it asked for, however long.** `POST /__warm` no longer clamps `hours` to eight; [`validateDeadlineHours`](stacks/claude/proxy/keepalive.ts) still refuses a null, non-finite, zero or negative value with a 400, and `MAX_DEADLINE_HOURS` stays as the default an absent `hours` falls back to. `requestedHours` and `hours` in the reply are therefore always equal. A missed session now burns roughly 4,500 usageUnits per hour with no upper bound — see [ADR 0078](docs/adrs/0078-resume-rate-is-below-break-even.md).
 

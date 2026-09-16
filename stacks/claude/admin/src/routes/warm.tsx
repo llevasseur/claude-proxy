@@ -1,4 +1,4 @@
-import { sessionName } from '@agent-proxy/claude-core';
+import { sessionDisplayName } from '@agent-proxy/claude-core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createRoute, Link } from '@tanstack/react-router';
 import { Flame } from 'lucide-react';
@@ -54,9 +54,18 @@ function remaining(deadline: string, now: number): string {
 }
 
 /**
+ * Start order, with a transcript missing its `- started:` header sorted last rather than
+ * first — undated, it must not outrank a dated sibling.
+ */
+function startKey(session: SessionSummary): string {
+  return session.started ?? '￿';
+}
+
+/**
  * The transcript each session id resolves to. One id covers a whole family — the root and
- * every subagent spawned under it — so the row takes the root: earliest start, ties broken
- * by thread id, the order `linkSessions` in core sorts a family into.
+ * every subagent spawned under it — so the row takes the earliest start, ties broken by
+ * thread id. Core's own root is whichever transcript ends with no parent, which needs the
+ * node streams this page does not read, so this is the nearest pick the listing supports.
  */
 function transcriptsBySessionId(sessions: SessionSummary[]): Map<string, SessionSummary> {
   const roots = new Map<string, SessionSummary>();
@@ -67,8 +76,7 @@ function transcriptsBySessionId(sessions: SessionSummary[]): Map<string, Session
       roots.set(session.sessionId, session);
       continue;
     }
-    const rank =
-      (session.started ?? '').localeCompare(held.started ?? '') || session.threadId.localeCompare(held.threadId);
+    const rank = startKey(session).localeCompare(startKey(held)) || session.threadId.localeCompare(held.threadId);
     if (rank < 0) roots.set(session.sessionId, session);
   }
   return roots;
@@ -89,7 +97,7 @@ function SessionName({ entry, transcript }: { entry: WarmEntry; transcript: Sess
   return (
     <>
       <Link to='/sessions/$id' params={{ id: transcript.threadId }} className='link'>
-        {sessionName(transcript) ?? transcript.threadId}
+        {sessionDisplayName(transcript)}
       </Link>
       <div className='muted' style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-3)' }}>
         {entry.sessionKey}
@@ -177,19 +185,6 @@ function Figure({ label, value }: { label: string; value: string }) {
 }
 
 function Registry({ status, now }: { status: WarmResponse; now: number }) {
-  const queryClient = useQueryClient();
-  const release = useMutation({
-    mutationFn: (sessionId: string) => releaseWarm(sessionId),
-    // No optimism: the refetch is what decides the row is gone, so a release the proxy
-    // refused leaves the row exactly where it was rather than blinking it out.
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ['warm'] }),
-  });
-
-  // Same cache key the Sessions page reads them with, so arriving from there costs no second
-  // fetch. A failure here costs the row its link, never the registry.
-  const sessions = useQuery({ queryKey: ['sessions'], queryFn: getSessions, retry: false });
-  const transcripts = useMemo(() => transcriptsBySessionId(sessions.data?.sessions ?? []), [sessions.data]);
-
   if (status.entries.length === 0) {
     return (
       <div className='card'>
@@ -200,12 +195,39 @@ function Registry({ status, now }: { status: WarmResponse; now: number }) {
       </div>
     );
   }
+  return <RegistryTable entries={status.entries} now={now} />;
+}
+
+/** The registered rows, split out so an empty registry runs none of the queries below. */
+function RegistryTable({ entries, now }: { entries: WarmEntry[]; now: number }) {
+  const queryClient = useQueryClient();
+  const release = useMutation({
+    mutationFn: (sessionId: string) => releaseWarm(sessionId),
+    // No optimism: the refetch is what decides the row is gone, so a release the proxy
+    // refused leaves the row exactly where it was rather than blinking it out.
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['warm'] }),
+  });
+
+  // Same cache key the Sessions page reads them with, so arriving from there costs no second
+  // fetch. A failure here costs the row its link, never the registry. The poll runs at the
+  // registry's own cadence only while a row is still unmatched — a transcript lands seconds
+  // after the session registers, and rescanning the corpus past that buys nothing.
+  const sessions = useQuery({
+    queryKey: ['sessions'],
+    queryFn: getSessions,
+    retry: false,
+    refetchInterval: (query) => {
+      const roots = transcriptsBySessionId(query.state.data?.sessions ?? []);
+      return entries.every((entry) => roots.has(entry.sessionKey)) ? false : REFETCH_MS;
+    },
+  });
+  const transcripts = useMemo(() => transcriptsBySessionId(sessions.data?.sessions ?? []), [sessions.data]);
 
   return (
     <div className='card'>
       <div className='card-head'>
         <h2>Sessions</h2>
-        <span className='range'>{status.entries.length} registered</span>
+        <span className='range'>{entries.length} registered</span>
       </div>
       <div className='table-scroll'>
         <table className='table'>
@@ -223,7 +245,7 @@ function Registry({ status, now }: { status: WarmResponse; now: number }) {
             </tr>
           </thead>
           <tbody>
-            {status.entries.map((entry) => {
+            {entries.map((entry) => {
               const pending = release.isPending && release.variables === entry.sessionKey;
               return (
                 <tr key={entry.sessionKey}>
