@@ -37,6 +37,15 @@ swallowing the value; `DELETE` releases and records `outcome: "stopped-released"
 `logs/warm.json` is written carrying status only, with zero matches for any credential or
 body marker.
 
+**The pending expiry was watched fire.** A registration left unmatched sat `pending` past
+the two-minute mark and then flipped to `stopped` with `outcome: "expired"` — the safety
+[ADR 0075](../adrs/0075-registration-stays-pending-until-matched.md) exists for, observed
+rather than asserted. Note the granularity, which is worth knowing before anyone reads
+"2 minutes" as exact: `PENDING_TTL_MS` is 120s but the registry-wide sweeper wakes every
+60s from process start, so an unmatched registration is stopped at the **first sweep after**
+two minutes — up to three minutes in the worst case. That is the intended design rather
+than drift; a mid-window reading that still says `pending` is not a fault.
+
 **One link is still unverified, exactly as [ADR 0075](../adrs/0075-registration-stays-pending-until-matched.md)
 records it.** Registering this session's real `CLAUDE_CODE_SESSION_ID` leaves the entry
 `pending`, because no traffic from that session reaches this proxy — which demonstrates the
@@ -57,7 +66,8 @@ sidecar schema — see [ADR 0077](../adrs/0077-a-ping-never-enters-handle.md).
 ## Decisions this campaign rests on
 
 Seven ADRs, written before charting from a five-round grill. They are the specification
-and they override the original brief where they differ. **Four carry `needs-human: true`.**
+and they override the original brief where they differ. **Five carry `needs-human: true`** —
+0073, 0076, 0077, 0078 and 0079.
 
 | ADR | Decision | needs-human |
 |---|---|---|
