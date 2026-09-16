@@ -39,6 +39,7 @@ import { route as toolSchemaRoute } from './tool-schema';
 import { nav as toolsNav, route as toolsRoute } from './tools';
 import { route as trendDetailRoute } from './trend-detail';
 import { nav as trendsNav, route as trendsRoute } from './trends';
+import { nav as warmNav, route as warmRoute } from './warm';
 import { nav as withheldNav, route as withheldRoute } from './withheld';
 
 /**
@@ -76,6 +77,7 @@ export const ROUTES = [
   sessionGraphRoute,
   sessionDetailRoute,
   sessionErrorsRoute,
+  warmRoute,
   pullRequestsRoute,
   notesRoute,
   jobsRoute,
@@ -113,6 +115,7 @@ const STATIONS = [
   projectsNav,
   sessionsNav,
   sessionGraphNav,
+  warmNav,
   pullRequestsNav,
   notesNav,
   jobsNav,

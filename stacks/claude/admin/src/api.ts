@@ -969,6 +969,55 @@ export interface ChatStopResponse {
 }
 
 /**
+ * One session the proxy is holding warm, as `/__warm` reports it and the server narrows it.
+ *
+ * `state` stays a string rather than a union: it is the proxy's vocabulary, read across a
+ * process boundary, and a value this build has not heard of should render as itself rather
+ * than fail to type.
+ */
+export interface WarmEntry {
+  sessionKey: string;
+  account: string | null;
+  state: string;
+  pingsSent: number;
+  cacheReadTokens: number;
+  usageUnits: number;
+  /** The cached prefix's TTL, which is what sets the ping cadence. */
+  ttlMs: number;
+  registeredAt: string;
+  lastActivity: string;
+  deadline: string;
+  outcome: string | null;
+  outcomeDetail: string | null;
+  resumedAt: string | null;
+  resumedAfterPings: number | null;
+}
+/** The proxy's own tallies, carried through rather than recounted on this side. */
+export interface WarmTotals {
+  entries: number;
+  pending: number;
+  armed: number;
+  stopped: number;
+  resumed: number;
+  pingsSent: number;
+  cacheReadTokens: number;
+  usageUnits: number;
+}
+export interface WarmResponse {
+  /** When the proxy built the document — not when the dashboard fetched it. */
+  updatedAt: string | null;
+  entries: WarmEntry[];
+  totals: WarmTotals;
+  meta: { proxy: string };
+}
+/** What a release answers: `released: false` means the proxy held no such registration. */
+export interface WarmReleaseResponse {
+  sessionId: string;
+  released: boolean;
+  meta: { proxy: string };
+}
+
+/**
  * What each declared read answers. `extends Record<ApiJsonGetPath, unknown>` keys it by
  * the manifest's own GET paths: a declared route with no shape here does not compile,
  * and neither does a shape for a path the server does not serve.
@@ -1026,6 +1075,7 @@ interface ApiGetResponses extends Record<ApiJsonGetPath, unknown> {
   '/api/cli-internals/function': CliFunctionResponse;
   '/api/system-prompt': SystemPromptResponse;
   '/api/filters': FiltersResponse;
+  '/api/warm': WarmResponse;
 }
 
 /**
@@ -1048,6 +1098,7 @@ interface ApiPostResponses extends Record<ApiWritePath, unknown> {
   '/api/chat/sessions/message': ChatSendResponse;
   '/api/chat/stop': ChatStopResponse;
   '/api/chat/sessions/end': ChatStopResponse;
+  '/api/warm/release': WarmReleaseResponse;
 }
 
 /** Unwrap a response, preferring the server's `{ error }` message over the status. */
@@ -1242,6 +1293,13 @@ export const fileIdeas = (filings: IdeaFiling[]) => write('/api/ideas/area', { f
 /** Write the comment on an idea. It replaces the previous one; `''` clears it. */
 export const commentIdeas = (comments: IdeaComment[]) => write('/api/ideas/comment', { comments });
 export const getFilters = () => read('/api/filters');
+/** Every session the proxy is holding warm. A 502 here means the proxy is down, not idle. */
+export const getWarm = () => read('/api/warm');
+/**
+ * Retire one registration. The warm session is never woken, so this costs no tokens in it —
+ * which is the whole reason the control is on this page rather than in the session itself.
+ */
+export const releaseWarm = (sessionId: string) => write('/api/warm/release', { sessionId });
 export const getChatConfig = () => read('/api/chat/config');
 /** Turns in flight — how a session page finds the Stop the starting tab may have lost. */
 export const getRunningChats = () => read('/api/chat/running');
