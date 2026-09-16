@@ -36,5 +36,4 @@
 | Research 002 — Which requests are safe to serve (cacheability gate) | [research-002-cacheability.md](research-002-cacheability.md) |
 | Wayfinder — Monorepo Fusion | [wayfinder-monorepo-fusion.md](wayfinder-monorepo-fusion.md) |
 | Wayfinder — Provider Seam | [wayfinder-provider-seam.md](wayfinder-provider-seam.md) |
-| Wayfinder — Warm Cache | [wayfinder-warm-cache.md](wayfinder-warm-cache.md) |
 <!-- okq:index:end -->
