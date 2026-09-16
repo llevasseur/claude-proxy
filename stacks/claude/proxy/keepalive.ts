@@ -53,10 +53,11 @@ const UPSTREAM_HOST = 'api.anthropic.com';
 const MESSAGES_PATH = '/v1/messages';
 
 /**
- * The policy ceiling on how long an entry may be held open, in hours. ADR 0078 ships
- * this default knowing the measured resume rate sits below break-even; ADR 0076 notes it
- * is a policy ceiling rather than a demonstrated one, since the real limit in an
- * all-sessions-idle case is the bearer's own lifetime.
+ * How long an entry is held open when a registration names no duration of its own, in
+ * hours. ADR 0078 ships this default knowing the measured resume rate sits below
+ * break-even. **It is a default and no longer a ceiling** — a caller's `hours` is honoured
+ * verbatim, so nothing here bounds an explicit request; ADR 0076's point stands either
+ * way, since the real limit in an all-sessions-idle case is the bearer's own lifetime.
  */
 export const MAX_DEADLINE_HOURS = 8;
 
@@ -286,17 +287,18 @@ function highestUtilization(payload: JsonValue | null, depth = 0): number | null
 }
 
 /**
- * The hours a registration asked for, clamped to the policy ceiling. Pure, and exported
- * so a test reaches it without starting a timer.
+ * The hours a registration asked for, honoured verbatim. Pure, and exported so a test
+ * reaches it without starting a timer.
  *
  * Answers null for anything that is not a usable duration — a non-finite value, a NaN, a
  * zero or a negative one — because there is no sensible floor to round those up to, and a
  * registration that asked for nonsense should be refused rather than silently given a
- * default it never requested. Anything above the ceiling is clamped down to it.
+ * default it never requested. **Nothing bounds it from above**: a caller asking for 24
+ * hours gets 24. See ADR 0078 for why that ceiling was removed and what it costs.
  */
-export function clampDeadlineHours(hours: number | null | undefined): number | null {
+export function validateDeadlineHours(hours: number | null | undefined): number | null {
   if (hours == null || !Number.isFinite(hours) || hours <= 0) return null;
-  return Math.min(hours, MAX_DEADLINE_HOURS);
+  return hours;
 }
 
 /** `"1h"`, `"5m"`, `"30s"`, `"250ms"` as milliseconds; null when it is none of those. */
@@ -410,7 +412,7 @@ export function storableHeaders(headers: HeaderBag | undefined | null) {
 
 export interface RegisterOptions {
   sessionKey: string;
-  /** Requested hours, clamped by {@link clampDeadlineHours}. */
+  /** Requested hours, validated by {@link validateDeadlineHours} and otherwise unaltered. */
   hours: number;
   now?: number;
 }
@@ -431,9 +433,9 @@ export interface RegisterResult {
  */
 export function register({ sessionKey, hours, now = Date.now() }: RegisterOptions): RegisterResult {
   if (!sessionKey) return { ok: false, reason: 'no session key' };
-  const clamped = clampDeadlineHours(hours);
-  if (clamped === null) return { ok: false, reason: 'hours must be a finite number above zero' };
-  const deadline = now + clamped * 3_600_000;
+  const validated = validateDeadlineHours(hours);
+  if (validated === null) return { ok: false, reason: 'hours must be a finite number above zero' };
+  const deadline = now + validated * 3_600_000;
   entries.set(sessionKey, {
     sessionKey,
     account: null,

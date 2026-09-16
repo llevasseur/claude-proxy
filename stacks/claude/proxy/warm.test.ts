@@ -128,16 +128,16 @@ test('the control path is recognised with a query string, and nothing else is', 
 
 // ------------------------------------------------------------------- registration
 
-test('POST clamps hours above the eight-hour ceiling', () => {
+test('POST honours hours far above the old eight-hour ceiling', () => {
   reset();
   const reply = call('POST', { sessionId: 'sess-1', hours: 40 });
 
   assert.equal(reply.statusCode, 200);
-  assert.equal(reply.payload.hours, 8);
-  assert.equal(reply.payload.requestedHours, 40);
+  assert.equal(reply.payload.hours, 40);
+  assert.equal(reply.payload.requestedHours, 40, 'requestedHours and hours are now always equal');
   const entry = snapshot()[0];
   assert.ok(entry);
-  assert.ok(entry.deadline - entry.registeredAt <= 8 * 3_600_000, 'the deadline honours the ceiling');
+  assert.equal(entry.deadline - entry.registeredAt, 40 * 3_600_000, 'the deadline honours the request verbatim');
 });
 
 test('POST keeps a duration it can honour, and refuses one it cannot', () => {

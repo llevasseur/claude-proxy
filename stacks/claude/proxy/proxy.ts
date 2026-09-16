@@ -35,7 +35,6 @@ import { type DeclinedGate, ensureMessageBreakpoint, estPrefixTokens, noteCacheR
 import { resolveProxyPort } from './config.ts';
 import { asList, asNumber, asRecord, asText, type JsonObject, type JsonValue, parseJson } from './json.ts';
 import {
-  clampDeadlineHours,
   type EntrySnapshot,
   snapshot as keepaliveSnapshot,
   MAX_DEADLINE_HOURS,
@@ -46,6 +45,7 @@ import {
   setUtilizationSource,
   startKeepalive,
   usageLiveUtilization,
+  validateDeadlineHours,
 } from './keepalive.ts';
 import * as session from './session.ts';
 import * as skim from './skim.ts';
@@ -868,10 +868,13 @@ export function warmControl({ method, url, remoteAddress, body }: WarmControlReq
 
   if (verb === 'POST') {
     if (!sessionId) return { statusCode: 400, payload: { error: 'sessionId is required' }, changed: false };
-    // Absent `hours`, the registration asks for the ceiling — the default ADR 0078
-    // ships knowing the measured resume rate sits below break-even.
+    // Absent `hours`, the registration falls back to MAX_DEADLINE_HOURS — the default
+    // ADR 0078 ships knowing the measured resume rate sits below break-even. A caller
+    // that does name `hours` gets exactly that, however large: the ceiling this constant
+    // used to impose was removed deliberately, so the TTL asked for is the only bound on
+    // what a missed session spends.
     const requested = asNumber(parsed?.hours) ?? Number(query.get('hours') ?? MAX_DEADLINE_HOURS);
-    const hours = clampDeadlineHours(requested);
+    const hours = validateDeadlineHours(requested);
     if (hours === null) {
       return { statusCode: 400, payload: { error: 'hours must be a finite number above zero' }, changed: false };
     }

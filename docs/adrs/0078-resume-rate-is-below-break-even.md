@@ -99,6 +99,32 @@ twice-stated instruction.
 2. **Drop the default to 2 hours**, keeping 8 as an explicit opt-in ceiling. That alone
    moves break-even to 3.9%, below even the pessimistic measured rate.
 
+### Amendment: the ceiling is gone, at the user's request
+
+**The 8-hour clamp no longer exists.** `clampDeadlineHours` is now
+`validateDeadlineHours`: it still refuses null, a non-finite value, a NaN, a zero and a
+negative — that is input validation, and `POST /__warm` still answers those with a 400 —
+but it no longer bounds a caller's `hours` from above. A registration asking for 24 hours
+gets 24. `MAX_DEADLINE_HOURS` stays, demoted from ceiling to **default**: it is what the
+endpoint falls back to when a registration names no duration at all, so absent-`hours`
+behaviour is exactly what it was.
+
+This was asked for directly and is recorded here rather than argued with. Two things
+follow from it.
+
+**`requestedHours` and `hours` in the `POST /__warm` reply are now always equal.** The
+pair existed to show a clamp having happened; with nothing to clamp, the two fields can
+never disagree. Anything reading `requestedHours` to detect a clamp is reading a field
+that will not move again.
+
+**The cost, stated plainly: a missed warm session now burns roughly 4,500 usageUnits per
+hour, with no upper bound.** The break-even table above priced a miss at `hours=8` as nine
+pings and −36,000 units; that row is no longer the worst case, because there is no worst
+case. At 24 hours a miss costs about −108,000, at 48 about −216,000, and the break-even
+hit rate climbs with it. **The TTL a caller passes is now the only thing limiting spend on
+a session that never comes back** — the recommendation above to register at the moment of
+stepping away, rather than at session start, is correspondingly more urgent, not less.
+
 **Instrumentation that settles this from the user's own traffic.** `warm.json` records per
 entry `pingsSent` and a terminal `outcome` of `resumed`, `expired`, or `stopped-<reason>`.
 After a week of real use the hit rate is measurable against the 15.5% line, and nobody has
@@ -114,3 +140,7 @@ to take one archived day's word for it.
   instrumentation matters more than the archived number precisely because of this.
 - If the measured hit rate lands above 15.5% in real use, the specified default is
   vindicated and this record should be superseded saying so.
+- **With the ceiling removed, the miss cost is unbounded and the break-even rate is no
+  longer a single number** — it is a function of whatever `hours` the caller passed. The
+  8-hour default keeps the old 15.5% figure for a registration that names nothing; every
+  explicit request sets its own line.
