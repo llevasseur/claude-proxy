@@ -22,31 +22,27 @@ scope: claude
 > was asked. The final ticket `warm-cache-zz` deletes them all; this map goes when the wayfinder
 > closes. The durable output is the merged code and the repository's feature and spec docs.
 
-## Standing — 2026-09-15: incomplete, and both blockers need a human
+## Standing — 2026-09-16: all four tickets landed
 
-Two of four tickets landed on `wayfinder/warm-cache`. **Neither remaining blocker is a
-problem with the work, and neither can be cleared by an agent** — both need a human at this
-device.
+Every ticket is merged. The two blockers recorded here on 2026-09-15 — an unapproved
+1Password signing prompt holding ticket 02's commit, and a classifier refusal on ticket
+04's merge — both cleared, and the work landed unchanged from what was already written and
+passing.
 
-- **Ticket 02** — complete and passing (157/157 proxy tests), five files staged, **zero
-  commits**. `git commit` fails with `1Password: failed to fill whole buffer` /
-  `fatal: failed to write commit object`, an unapproved signing prompt. AGENTS.md forbids
-  the three workarounds (rewriting the commit, `--no-gpg-sign`, changing signing config),
-  and the one blessed retry was spent and hit the identical prompt. **The worktree at
-  `.claude/worktrees/task-warm-cache-02-proxy-wiring-and-status` holds the only copy of
-  that work — do not remove it.**
-- **Ticket 04** — built, reviewed, green, and `MERGEABLE` as
-  [llevasseur/my-command#146](https://github.com/llevasseur/my-command/pull/146). The merge
-  was refused by the auto-mode classifier, and a refused merge is final.
+**Verified against a running proxy**, not only against unit tests. With the feature merged,
+the proxy was started on port 8791 and the endpoint exercised end to end: `GET /__warm`
+answers the `usage-live.json`-shaped document; `POST` registers as `pending` with an 8-hour
+deadline; `hours: 99` clamps to 8 and reports `requestedHours: 99` alongside it rather than
+swallowing the value; `DELETE` releases and records `outcome: "stopped-released"`; and
+`logs/warm.json` is written carrying status only, with zero matches for any credential or
+body marker.
 
-**The campaign PR must not be merged while ticket 02 is unlanded**, because the feature is
-inert without it: ticket 01 shipped the module and nothing calls it yet.
-
-**The `zz` ticket has deliberately not been run.** It deletes every plan in this directory,
-including ticket 02's — which is the resume path for the one ticket still outstanding.
-Retiring the scaffolding now is what would make this campaign unresumable.
-
-Resume with `/dev --resume warm-cache` once the signing prompt is approved.
+**One link is still unverified, exactly as [ADR 0075](../adrs/0075-registration-stays-pending-until-matched.md)
+records it.** Registering this session's real `CLAUDE_CODE_SESSION_ID` leaves the entry
+`pending`, because no traffic from that session reaches this proxy — which demonstrates the
+handshake refusing to claim a session it has not seen, and still does not join the
+environment variable to the two header values. That link needs a live client pointed at the
+proxy.
 
 ## Scope
 
@@ -88,11 +84,12 @@ Lanes are file-scoped so nothing collides on the shared base branch.
 
 ## Active tasks
 
+None. Every ticket is complete, and the `zz` ticket has retired every plan in this
+directory. This map is the last of the campaign's scaffolding and the close operation
+retires it.
+
 | # | Task | Plan | Branch | Status | Note |
 |---|------|------|--------|--------|------|
-| 02 | proxy-wiring-and-status | [warm-cache-02-proxy-wiring-and-status](warm-cache-02-proxy-wiring-and-status.md) | `task/warm-cache-02-proxy-wiring-and-status` | paused | Work complete and passing (157/157 proxy tests), five files staged, zero commits. Blocked on an unapproved 1Password signing prompt on this device. Worktree left standing at `.claude/worktrees/task-warm-cache-02-proxy-wiring-and-status` — it holds the only copy. Resume: approve the prompt, then `git commit -F /tmp/warm-cache-02-commit.txt` in that worktree, then `/clean`, `/pr`, retarget to `wayfinder/warm-cache`, merge. |
-| 04 | warm-command | [warm-cache-04-warm-command](warm-cache-04-warm-command.md) | `feat/warm-command` (in `my-command`) | paused | Built, reviewed, green. PR llevasseur/my-command#146 is OPEN and MERGEABLE; the merge was refused by the auto-mode classifier, which is final. Needs a human: `gh pr merge 146 --squash`, then `my-command-tools cleanup --branch feat/warm-command`. |
-| zz | retire-done-plans | [warm-cache-zz-retire-done-plans](warm-cache-zz-retire-done-plans.md) | `task/warm-cache-zz-retire-done-plans` | todo | Final ticket — deletes every plan. Execute last. |
 
 <!--
 Status is exactly one of these six:
@@ -115,6 +112,83 @@ nothing else removes them, so without it they outlive the campaign permanently.
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### zz — retire-done-plans · 2026-09-16
+
+Deleted all five `warm-cache-*.md` plan files, this ticket's own included, and regenerated
+`docs/wayfinder/index.md`. The map is left standing for the close operation to retire.
+
+No plan was marked done for this one, because the ticket deletes its own plan — that is the
+one completion in a campaign with nothing left to mark.
+
+**Deviation:** run directly by the campaign owner rather than dispatched as its own ticket
+run. Every other ticket had already landed, its whole criteria are five deletions and an
+index regeneration, and a worktree-and-PR cycle for that would have cost more than it
+bought. Nothing outside `docs/wayfinder/warm-cache-*` was touched: the sibling campaigns'
+plans (`monorepo-fusion-*`, `provider-seam-*`, `map-*`, `research-*`, `decision-*`) are
+untouched, and so are `docs/adrs/` and `docs/features/`.
+
+### 04 — warm-command · 2026-09-16 · my-command#146
+
+Added `/warm` to the separate `my-command` repository: `src/commands/warm.md` (the bare
+source), the generated `commands/warm.md`, the Codex skill `skills/warm/SKILL.md`, and
+`docs/features/warm.md`. Merged into that repository's own `main`. Command count went
+31 → 32 with every authoring invariant satisfied.
+
+The command is one curl and nothing else — no arguments, no state, no teardown, no
+follow-up poll — so it is correct when `/task --add warm` fires it once at the start of a
+run.
+
+**Two things it refuses to do, both deliberate.** It never reports the registration as
+warm: "session kept warm" and "cache warmed" are forbidden wording in the body, because a
+pending registration that nothing matches expires silently with no second message to
+correct the record. And a refused connection is reported once as "the proxy is not
+running", with retrying, polling and falling back to another port each ruled out by name.
+
+It sends `hours: 8` as specified, and says in its own text that the value is not the
+agent's to tune while recording the lower recommendation from
+[ADR 0078](../adrs/0078-resume-rate-is-below-break-even.md) as guidance.
+
+**Deviation:** it landed a day later than its siblings. The merge was refused by the
+auto-mode classifier on 2026-09-15 and went through unchanged on 2026-09-16; nothing about
+the work changed in between.
+
+### 02 — proxy-wiring-and-status · 2026-09-16 · PR #339
+
+Wired the keep-alive module into `handle()` behind a loopback-only `/__warm`, merged into
+`wayfinder/warm-cache`. Five files, 892 insertions: `proxy.ts`, `usage-live.ts`,
+`package.json`, the new `warm.test.ts`, and a `CHANGELOG.md` bullet.
+
+The control endpoint is answered as the first thing in `handle()`, ahead of `noteAuth`, the
+body parse, `isTokenCount` and the skim gate. Loopback is enforced on the **peer address
+rather than on `HOST`**, covering `127.0.0.0/8`, `::1` and `::ffff:127.x`, so `HOST=""`
+binding all interfaces cannot carry the endpoint off-box. `usage-live.ts` grew an
+account-keyed bearer store wired into `setBearerSource`, leaving the global bearer and the
+usage poll unchanged.
+
+**Three judgement calls the ticket flagged for review, all kept.**
+`bearerForAccount(null)` returns `null` rather than falling back to the global bearer,
+because "no cross-account fallback" is the whole point of the scoping in
+[ADR 0076](../adrs/0076-ping-takes-the-freshest-same-account-bearer.md) — an entry with no
+account of its own stops as `no-credential`. `resumed` is observed in `handle()` rather
+than added to `keepalive.ts`, since resuming is the user coming back rather than the entry
+retiring. And the capture is deliberately **not** on the skim-hit path: a skim hit never
+reaches Anthropic, so counting it as activity would push the ping back while the upstream
+cache carried on expiring.
+
+**It closed ticket 01's open follow-up.** `keepalive.test.ts` was in no CI at all, because
+the package's test script enumerates its files by hand and ticket 01's lane excluded
+`package.json`. It is enumerated now, and a guard test fails whenever any sibling
+`*.test.ts` is missing from that list, so the class of bug cannot recur. Proxy suite:
+157/157.
+
+**Constraint discovered:** the metering weight could not be pinned by importing
+`usage-limits.ts`, because the proxy's `tsconfig` sets `rootDir: "."` and the proxy must
+stay dependency-free. The test reads core's file text and asserts the literal instead,
+which pins the two without an import.
+
+**Deviation:** the work was complete and passing on 2026-09-15 but uncommitted, blocked on
+an unapproved signing prompt. It was committed unchanged on 2026-09-16.
 
 ### 01 — keepalive-module · 2026-09-15 · PR #337
 

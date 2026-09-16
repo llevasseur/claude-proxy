@@ -34,11 +34,6 @@
 | provider-seam-18-docs-feature-and-spec | [provider-seam-18-docs-feature-and-spec.md](provider-seam-18-docs-feature-and-spec.md) |
 | provider-seam-zz-retire-done-plans | [provider-seam-zz-retire-done-plans.md](provider-seam-zz-retire-done-plans.md) |
 | Research 002 — Which requests are safe to serve (cacheability gate) | [research-002-cacheability.md](research-002-cacheability.md) |
-| warm-cache-01-keepalive-module | [warm-cache-01-keepalive-module.md](warm-cache-01-keepalive-module.md) |
-| warm-cache-02-proxy-wiring-and-status | [warm-cache-02-proxy-wiring-and-status.md](warm-cache-02-proxy-wiring-and-status.md) |
-| warm-cache-03-feature-doc | [warm-cache-03-feature-doc.md](warm-cache-03-feature-doc.md) |
-| warm-cache-04-warm-command | [warm-cache-04-warm-command.md](warm-cache-04-warm-command.md) |
-| warm-cache-zz-retire-done-plans | [warm-cache-zz-retire-done-plans.md](warm-cache-zz-retire-done-plans.md) |
 | Wayfinder — Monorepo Fusion | [wayfinder-monorepo-fusion.md](wayfinder-monorepo-fusion.md) |
 | Wayfinder — Provider Seam | [wayfinder-provider-seam.md](wayfinder-provider-seam.md) |
 | Wayfinder — Warm Cache | [wayfinder-warm-cache.md](wayfinder-warm-cache.md) |
