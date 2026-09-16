@@ -163,7 +163,6 @@ const USAGE_LIMITS = resolveUsageLimits();
 const COMMANDS_DIR = resolveCommandsDir();
 const SETTINGS_PATH = resolveSettingsPath();
 const SYSTEM_PROMPT_PATH = resolveSystemPromptPath();
-/** Read at startup like every other resolved path: the warm routes are the only callers. */
 const PROXY_BASE_URL = resolveProxyBaseUrl();
 const configuredNotesPollMs = Number(process.env.NOTES_POLL_MS ?? 5_000);
 const NOTES_POLL_MS =

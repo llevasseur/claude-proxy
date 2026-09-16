@@ -1295,10 +1295,7 @@ export const commentIdeas = (comments: IdeaComment[]) => write('/api/ideas/comme
 export const getFilters = () => read('/api/filters');
 /** Every session the proxy is holding warm. A 502 here means the proxy is down, not idle. */
 export const getWarm = () => read('/api/warm');
-/**
- * Retire one registration. The warm session is never woken, so this costs no tokens in it —
- * which is the whole reason the control is on this page rather than in the session itself.
- */
+/** Retire one registration. The warm session is never woken, so this costs no tokens in it. */
 export const releaseWarm = (sessionId: string) => write('/api/warm/release', { sessionId });
 export const getChatConfig = () => read('/api/chat/config');
 /** Turns in flight — how a session page finds the Stop the starting tab may have lost. */

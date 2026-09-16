@@ -226,12 +226,10 @@ export const API_ROUTES = [
   // A GET of `~/.claude/CLAUDE.md`, and a POST that rewrites it.
   { path: '/api/system-prompt', methods: ['GET', 'POST'], kind: 'json', cors: 'origin', params: [] },
   { path: '/api/filters', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
-  // Read through to the proxy's loopback-only `/__warm`, not off the corpus: the keepalive
-  // registry lives in that process's memory. With the proxy down this answers 502 rather
-  // than an empty list, because "no session is warm" is a different claim.
+  // Read through to the proxy's loopback-only `/__warm`: the keepalive registry lives in
+  // that process's memory. With the proxy down this answers 502, not an empty list.
   { path: '/api/warm', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
-  // The release. A POST here issues the proxy's `DELETE /__warm` for one session, so it is
-  // `origin` like every other write — it retires a registration.
+  // A POST here issues the proxy's `DELETE /__warm` for one session — a write, so `origin`.
   { path: '/api/warm/release', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
 ] as const satisfies readonly ApiRouteDeclaration[];
 

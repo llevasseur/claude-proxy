@@ -15,9 +15,8 @@ import type { NavEntry } from './nav';
  * reads through `/api/warm` to that process's own `/__warm` rather than off the corpus —
  * which is why an unreachable proxy is drawn as unreachable rather than as nothing warm.
  *
- * **Releasing from here is the point.** A warm session is quiet by definition; the only
- * other way to stop one is to open it and spend a turn saying so, which defeats what the
- * feature bought. The release travels proxy-side and the session is never woken.
+ * **The release travels proxy-side and never wakes the session.** The only other way to stop
+ * one is to open it and spend a turn saying so, which spends what the feature saved.
  */
 
 /** A registry this small changes only when a ping fires or a deadline passes. */
@@ -35,11 +34,8 @@ function stateBadge(state: string): string {
 }
 
 /**
- * The window the registration asked for, in hours.
- *
- * Derived rather than read: the document carries the two instants, and the hours are what
- * the reader actually asked `/warm` for. A row missing either end shows nothing rather than
- * a computed zero.
+ * The window the registration asked for, in hours — derived, since the document carries the
+ * two instants rather than the figure. A row missing either end shows nothing, not a zero.
  */
 function windowHours(entry: WarmEntry): string {
   const from = Date.parse(entry.registeredAt);

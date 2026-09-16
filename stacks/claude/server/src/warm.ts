@@ -9,9 +9,8 @@
  * them from disagreeing about a session that was released a moment ago.
  *
  * [ADR 0079](../../../../docs/adrs/0079-warm-json-ships-without-a-dashboard-card.md)
- * deferred this surface rather than ruling it out, and said the reader it would need
- * requires no proxy change. This is that reader: nothing here writes, and the proxy is
- * untouched.
+ * deferred this surface and said the reader it needs requires no proxy change. This is that
+ * reader; the proxy is untouched.
  *
  * Everything the endpoint answers is status — counts, timestamps and stop reasons, by the
  * construction of `snapshot()` rather than by filtering here. No body, prompt or credential
@@ -37,9 +36,8 @@ export type WarmFetch = (
 /**
  * The proxy did not answer, or answered something this cannot read.
  *
- * Distinct from a programming fault so the route can say 502 — the dashboard's reading is
- * "the proxy is down", which is materially different from "no session is warm" and must not
- * render as an empty list.
+ * Distinct from a programming fault so the route can say 502: "the proxy is down" must not
+ * render as "no session is warm".
  */
 export class WarmProxyError extends Error {
   constructor(message: string) {
@@ -113,11 +111,8 @@ async function callWarm(base: string, init: Parameters<WarmFetch>[1], fetchImpl:
 }
 
 /**
- * Narrow one row.
- *
- * Every field is defaulted rather than required: the proxy is a separate process on its own
- * release cycle, and a row that gained or lost a field should cost that cell rather than the
- * whole page.
+ * Narrow one row. Every field is defaulted rather than required — the proxy is a separate
+ * process on its own release cycle, so a row that lost a field costs that cell, not the page.
  */
 function toEntry(raw: JsonObject): WarmEntry {
   return {
@@ -166,11 +161,9 @@ export async function buildWarmStatus(base: string, fetchImpl: WarmFetch = fetch
 }
 
 /**
- * Retire one registration.
- *
- * The point of the whole page: the warm session itself never wakes, so stopping it costs no
- * tokens in it. `released: false` means the proxy held nothing under that id, which is what
- * a second click on a stale row looks like.
+ * Retire one registration. The warm session never wakes, so stopping it costs no tokens in
+ * it. `released: false` means the proxy held nothing under that id — a second click on a
+ * stale row.
  */
 export async function releaseWarmSession(
   base: string,
