@@ -121,5 +121,12 @@ likely to collide.
 | Short months clamp to the last day; UTC stored, local resolution | [0070-period-boundaries.md](0070-period-boundaries.md) |
 | Agent patterns match by case-insensitive substring | [0071-agent-pattern-matching.md](0071-agent-pattern-matching.md) |
 | The collector is a timer inside net-server; LaunchAgent out of scope | [0072-collector-residency.md](0072-collector-residency.md) |
+| Justify the keep-alive in subscription usage units, not dollars | [0073-keep-alive-is-justified-in-usage-units.md](0073-keep-alive-is-justified-in-usage-units.md) |
+| The cached prefix survives local midnight, so the deadline is not capped at it | [0074-cached-prefix-survives-local-midnight.md](0074-cached-prefix-survives-local-midnight.md) |
+| A warm registration stays pending until a real request matches it | [0075-registration-stays-pending-until-matched.md](0075-registration-stays-pending-until-matched.md) |
+| A keep-alive ping takes the freshest same-account bearer, never the stored one | [0076-ping-takes-the-freshest-same-account-bearer.md](0076-ping-takes-the-freshest-same-account-bearer.md) |
+| A keep-alive ping never enters handle, and is ledgered in warm.json rather than the audit corpus | [0077-a-ping-never-enters-handle.md](0077-a-ping-never-enters-handle.md) |
+| The measured resume rate is below break-even, and the 8-hour default ships anyway | [0078-resume-rate-is-below-break-even.md](0078-resume-rate-is-below-break-even.md) |
+| warm.json ships without a dashboard card | [0079-warm-json-ships-without-a-dashboard-card.md](0079-warm-json-ships-without-a-dashboard-card.md) |
 | Legacy ADR identifier map | [legacy-map.md](legacy-map.md) |
 <!-- okq:index:end -->
