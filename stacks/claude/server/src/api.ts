@@ -4028,8 +4028,6 @@ export async function buildConcept(
   };
 }
 
-/* --- The recorded Jev calls --- */
-
 /**
  * What one recorded call turned out to be, decided here so the page never has to
  * read a JSON column to find out.
