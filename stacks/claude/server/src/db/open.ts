@@ -35,7 +35,7 @@ export function resolveDbPath(logDir: string): string {
  * Schema version, tracked in `PRAGMA user_version`. Bump it and add a migration
  * step below when the shape changes, so an existing file survives a `git pull`.
  */
-export const SCHEMA_VERSION = 22;
+export const SCHEMA_VERSION = 23;
 
 /**
  * Slice 1 — audit rows only. The `.md` and `.request.txt` bodies stay on disk;
@@ -848,6 +848,111 @@ CREATE TABLE IF NOT EXISTS route_observation (
 CREATE INDEX IF NOT EXISTS route_observation_route_idx ON route_observation(route, id DESC);
 `;
 
+/**
+ * Recorded Jev calls — the traffic between a Jev client and TypeSafe's System One
+ * endpoint, as a recording proxy in the sibling `my-command` repository wrote it
+ * to disk.
+ *
+ * **The keep is not `logs/`.** It sits outside this repository entirely, at
+ * `MY_COMMAND_JEV_RECORD_DIR` or `~/.my-command/jev-record/`, one directory per
+ * proxy run holding a `session.json` and one `NNNNNN.json` per exchange. That
+ * changes nothing about what these two tables are: the records are the source of
+ * truth and these rows are a disposable view of them, exactly as the file header
+ * requires. A keep that is not there yields no rows and is not an error.
+ *
+ * **Why the table exists at all.** The Jev client never throws — every failure
+ * comes back as an empty answer map — so a call that asked 125 questions and was
+ * answered 7, and a 401 that answered none, are indistinguishable from inside the
+ * client. They are distinguishable here: `question_count` beside `answer_count`
+ * names the first, and `status` beside a zero `answer_count` names the second.
+ * `error_name`/`error_message` carry the third case, a transport failure that
+ * never reached an HTTP status at all — non-null exactly when `status` is null.
+ *
+ * `usage_input_tokens`/`usage_output_tokens` are nullable because the record
+ * distinguishes a reported zero from a cost the response never stated; writing an
+ * unknown cost as 0 would make the second read as the first.
+ *
+ * `questions` and `answers` hold the two maps verbatim, so the counts beside them
+ * are conveniences rather than a replacement — nothing the record carried about
+ * what was asked and what came back is lost by going through this table.
+ *
+ * **What is deliberately not here:** request and response headers, bodies,
+ * `bodyText` and `state`. The records are already redacted at the source — a
+ * credential header reads `<redacted>` — and this file does not undo that by
+ * storing header maps whose shape it does not control. That keeps the repository
+ * rule in `AGENTS.md` (never persist bodies, credentials or arbitrary headers)
+ * true of these tables too. A call's HTTP `status` is what makes a 401 or a 422
+ * visible; the error body it arrived with stays in the record.
+ *
+ * The call is keyed on `(session, id)` — `id` is the sequence within one run, so
+ * it is unique only beside the run that produced it. The status index is the
+ * "which calls went wrong" read, and the timestamp index orders a listing.
+ *
+ * **No `file_watermark` row is cleared here**, unlike `CONCEPT_DETAIL` and
+ * `SCHEMA_V8`. Those two add columns to a table that already holds rows, so the
+ * watermark has to go or the new columns never fill. Both tables here are new at
+ * this step: there is nothing already ingested to re-derive, and no `jev/%`
+ * watermark can exist yet. A later step that changes these columns will need the
+ * clear — `DELETE FROM file_watermark WHERE path LIKE 'jev/%'` — and should note
+ * that `file_watermark` itself only exists from step 3 on.
+ */
+const SCHEMA_V23 = `
+CREATE TABLE IF NOT EXISTS jev_session (
+  -- The keep directory's own name: UTC to the second, then six characters of entropy.
+  session    TEXT PRIMARY KEY,
+  -- The record format version. Only 1 is ingested; see \`ingest-jev.ts\`.
+  v          INTEGER NOT NULL,
+  started_at TEXT NOT NULL,
+  -- Null when the proxy was killed rather than stopped cleanly.
+  ended_at   TEXT,
+  endpoint   TEXT NOT NULL,
+  pid        INTEGER,
+  host       TEXT,
+  port       INTEGER,
+  url        TEXT,
+  health     TEXT,
+  -- The run's own count of what it recorded; present on a clean stop only.
+  recorded   INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS jev_call (
+  session             TEXT NOT NULL REFERENCES jev_session(session) ON DELETE CASCADE,
+  -- Sequence within the run, matching the record's filename.
+  id                  INTEGER NOT NULL,
+  v                   INTEGER NOT NULL,
+  started_at          TEXT NOT NULL,
+  ended_at            TEXT,
+  duration_ms         INTEGER,
+  endpoint            TEXT,
+  method              TEXT,
+  path                TEXT,
+  model               TEXT,
+  request_bytes       INTEGER NOT NULL DEFAULT 0,
+  question_count      INTEGER NOT NULL DEFAULT 0,
+  -- The outgoing question map, verbatim. Null when the record carried none.
+  questions           TEXT,
+  question_ids        TEXT,
+  -- Null means no HTTP response arrived; the error columns say what happened instead.
+  status              INTEGER,
+  ok                  INTEGER NOT NULL DEFAULT 0,
+  response_bytes      INTEGER NOT NULL DEFAULT 0,
+  answer_count        INTEGER NOT NULL DEFAULT 0,
+  -- The answer map, verbatim. Null when the record carried none.
+  answers             TEXT,
+  answered_ids        TEXT,
+  unanswered_ids      TEXT,
+  -- Null, never 0, for a response that reported no usage. See the note above.
+  usage_input_tokens  INTEGER,
+  usage_output_tokens INTEGER,
+  error_name          TEXT,
+  error_message       TEXT,
+  PRIMARY KEY (session, id)
+);
+
+CREATE INDEX IF NOT EXISTS jev_call_started_at_idx ON jev_call(started_at);
+CREATE INDEX IF NOT EXISTS jev_call_status_idx     ON jev_call(status, answer_count);
+`;
+
 const SCHEMA_V4 = `
 DROP TABLE IF EXISTS command_run_pattern;
 DROP TABLE IF EXISTS command_run_step;
@@ -1012,6 +1117,7 @@ function migrate(db: DatabaseSync): void {
   if (from < 20) db.exec(SCHEMA_V20);
   if (from < 21) db.exec(SCHEMA_V21);
   if (from < 22) db.exec(SCHEMA_V22);
+  if (from < 23) db.exec(SCHEMA_V23);
 
   // `PRAGMA user_version` takes no bind parameters, hence the interpolation.
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
