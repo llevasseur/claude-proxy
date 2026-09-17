@@ -55,6 +55,7 @@ import {
   buildFilters,
   buildHooksPlugins,
   buildIdeas,
+  buildJevCalls,
   buildJob,
   buildJobDelete,
   buildJobFile,
@@ -94,6 +95,7 @@ import {
   buildUsageScoped,
   buildWithheld,
   contextPageQuery,
+  isJevCallFilter,
   type RebuildScope,
   rebuildScope,
   type SuggestionJudgeRequest,
@@ -1653,6 +1655,21 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
       if (err instanceof RemoteConceptStoreError) send(res, 502, { error: err.message });
       else throw err;
     }
+  },
+  // The recorded Jev traffic. A read over rows `db/ingest-jev.ts` wrote from a keep the
+  // recording proxy owns — this route asks Jev nothing, and there is no write beside it.
+  //
+  // No shadow read: the rows have one backing, so there is no second derivation for the
+  // substrate to disagree with. An unrecognised `?filter=` is a 400 rather than a silent
+  // fall back to every row, since "show me the failures" quietly answered with everything
+  // is the one wrong answer this page must not give.
+  '/api/jev-calls': async ({ res, url }) => {
+    const filter = url.searchParams.get('filter');
+    if (filter !== null && !isJevCallFilter(filter)) {
+      send(res, 400, { error: `invalid filter: ${filter} (expected all, unanswered or failed)` });
+      return;
+    }
+    send(res, 200, buildJevCalls(LOG_DIR, { filter: filter ?? 'all', limit: url.searchParams.get('limit') }));
   },
   '/api/ideas': (ctx) => serveIdeas(ctx, false),
   '/api/ideas/stream': (ctx) => serveIdeas(ctx, true),

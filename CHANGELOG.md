@@ -22,6 +22,8 @@ This project has not cut a release yet, so everything below sits under
 
 ### Added
 
+- **Recorded Jev calls have a dashboard page.** The storage half landed in schema v23; this is the read. A [Jev calls page](stacks/claude/admin/src/routes/jev-calls.tsx) over [`/api/jev-calls`](stacks/claude/server/src/api.ts) names what each call got back, so 125 asked against 7 answered reads as short, and a 401 or a transport error reads as failed. Unreported usage stays blank, never zero.
+
 - **Recorded Jev calls are queryable, so a half-answered call is visible.** The Jev client never throws — every failure returns an empty answer map — so a call that asked 125 questions and got 7, and a 401 that got none, look alike from inside it. Schema v23 in [`open.ts`](stacks/claude/server/src/db/open.ts) and [`ingest-jev.ts`](stacks/claude/server/src/db/ingest-jev.ts) index the recording proxy's keep, which lives outside this repository and need not exist.
 
 - **A keep-alive ping can be sent on demand, so whether it is holding a cache open is a one-second question.** `POST /__warm/ping` in [`proxy.ts`](stacks/claude/proxy/proxy.ts) pings a named session now rather than at the next ~50-minute interval, and answers with that ping's four token counts and a verdict: `cache-hit`, `paid-full-price`, `no-usage-reported`, or `refused`. Every entry also records `lastPing` for every reply, including the refusals that never increment `pingsSent`. The [Warm page](stacks/claude/admin/src/routes/warm.tsx) shows it per row, because a cumulative cache-read count of zero could not say whether the pings read nothing or reported nothing.

@@ -16,6 +16,7 @@ import { nav as hooksPluginsNav, route as hooksPluginsRoute } from './hooks-plug
 import { route as ideaDetailRoute } from './idea-detail';
 import { nav as ideasNav, route as ideasRoute } from './ideas';
 import { nav as internetNav, route as internetRoute } from './internet';
+import { nav as jevCallsNav, route as jevCallsRoute } from './jev-calls';
 import { route as jobDetailRoute } from './job-detail';
 import { nav as jobsNav, route as jobsRoute } from './jobs';
 import { route as memoryDetailRoute } from './memory-detail';
@@ -94,6 +95,7 @@ export const ROUTES = [
   conceptDetailRoute,
   adviceRoute,
   suggestionBucketRoute,
+  jevCallsRoute,
   ideasRoute,
   ideaDetailRoute,
 ] as const;
@@ -126,6 +128,7 @@ const STATIONS = [
   internetNav,
   conceptsNav,
   adviceNav,
+  jevCallsNav,
   ideasNav,
 ] as const;
 

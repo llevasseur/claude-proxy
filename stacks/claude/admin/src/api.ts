@@ -689,6 +689,78 @@ export interface ConceptSearchResponse {
   results: ConceptSearchHit[];
   meta: ConceptStoreMeta;
 }
+/**
+ * What one recorded Jev call turned out to be, decided server-side.
+ *
+ * Jev's client is built never to throw: every failure comes back as an empty answer
+ * map and reaches its caller looking like a result. `failed` is the call that never
+ * produced answers at all — a 401, a 422, or a transport error that never got a
+ * status — and `partial` is the quieter one, where fewer answers came back than were
+ * asked for.
+ */
+export type JevCallOutcome = 'ok' | 'partial' | 'empty' | 'failed';
+/** Which rows a read asks for. */
+export type JevCallFilter = 'all' | 'unanswered' | 'failed';
+/** One recorded exchange with the classifier. */
+export interface JevCallRow {
+  session: string;
+  id: number;
+  startedAt: string;
+  endedAt: string | null;
+  durationMs: number | null;
+  endpoint: string | null;
+  model: string | null;
+  questionCount: number;
+  answerCount: number;
+  /** Questions that came back with no answer. */
+  unansweredCount: number;
+  /** Null means no HTTP response arrived; {@link JevCallRow.errorName} says what did instead. */
+  status: number | null;
+  ok: boolean;
+  requestBytes: number;
+  responseBytes: number;
+  /** Null, never 0 — the response reported no usage, which is an unknown cost rather than a free one. */
+  usageInputTokens: number | null;
+  usageOutputTokens: number | null;
+  errorName: string | null;
+  errorMessage: string | null;
+  outcome: JevCallOutcome;
+}
+/** One recording-proxy run, for the calls that name it. */
+export interface JevSessionRow {
+  session: string;
+  startedAt: string;
+  /** Null when the proxy was killed rather than stopped cleanly. */
+  endedAt: string | null;
+  endpoint: string;
+  url: string | null;
+  health: string | null;
+  recorded: number | null;
+}
+/** How the whole table breaks down, counted before the filter and limit narrow it. */
+export interface JevCallCounts {
+  total: number;
+  ok: number;
+  partial: number;
+  empty: number;
+  failed: number;
+  unansweredQuestions: number;
+}
+export interface JevCallsResponse {
+  /** Newest first. */
+  calls: JevCallRow[];
+  sessions: JevSessionRow[];
+  meta: {
+    counts: JevCallCounts;
+    filter: JevCallFilter;
+    limit: number;
+    /** Rows matching the filter, which may exceed the number returned. */
+    matched: number;
+    returned: number;
+    /** False when there is no substrate to read — nothing recorded on this machine. */
+    substrate: boolean;
+  };
+}
 /** One run as the command page lists it — no per-turn series, no per-step breakdown. */
 export interface CommandRunListItem {
   /** A thread id for a top-level run, `<threadId>~<node>` for one nested inside another. */
@@ -1079,6 +1151,7 @@ interface ApiGetResponses extends Record<ApiJsonGetPath, unknown> {
   '/api/concepts/concept': ConceptResponse;
   '/api/concepts/search': ConceptSearchResponse;
   '/api/ideas': IdeasResponse;
+  '/api/jev-calls': JevCallsResponse;
   '/api/chat/config': ChatConfigResponse;
   '/api/chat/running': RunningChatsResponse;
   '/api/chat/thread': ChatThreadResponse;
@@ -1285,6 +1358,13 @@ export const saveSystemPrompt = (text: string, expectedModified?: string | null)
   write('/api/system-prompt', expectedModified === undefined ? { text } : { text, expectedModified });
 /** The whole ledger, paired with the `/api/ideas/stream` subscription that pushes the same shape. */
 export const getIdeas = () => read('/api/ideas');
+/**
+ * The recorded Jev traffic, newest first. `filter` narrows to the rows worth reading —
+ * the calls that came back short, and the ones that failed outright — while
+ * `meta.counts` stays a tally of the whole table, so a narrowed page can still say how
+ * much it is not showing.
+ */
+export const getJevCalls = (filter: JevCallFilter = 'all', limit?: number) => read('/api/jev-calls', { filter, limit });
 /**
  * Adjudicate ideas. The browser may set `accepted`, `rejected`, `proposed` (the
  * undo) and `shipped`; only `claimed` stays off, since a claim names a holder and
