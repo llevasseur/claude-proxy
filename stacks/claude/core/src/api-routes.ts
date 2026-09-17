@@ -173,6 +173,11 @@ export const API_ROUTES = [
   { path: '/api/ideas/area', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
   { path: '/api/ideas/comment', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
   { path: '/api/ideas/claim', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
+  // The recorded Jev traffic, newest first. A read over rows a recording proxy wrote and
+  // this stack only ingests — nothing here asks Jev anything, so there is no write half.
+  // `filter` narrows to the rows worth looking at: the calls that came back short, and the
+  // ones that failed outright.
+  { path: '/api/jev-calls', methods: ['GET'], kind: 'json', cors: 'open', params: ['limit', 'filter'] },
   { path: '/api/notes', methods: ['GET'], kind: 'json', cors: 'open', params: ['cursor', 'limit', 'archived'] },
   {
     path: '/api/notes/stream',

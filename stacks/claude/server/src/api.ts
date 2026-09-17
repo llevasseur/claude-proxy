@@ -1,3 +1,6 @@
+// The only `node:` import in this file, and a type-only one: `buildJevCalls` names the
+// handle `openDbReadOnly` hands it. Every other read here is delegated to a sibling module.
+import type { DatabaseSync, SQLOutputValue } from 'node:sqlite';
 import {
   type Advice,
   type AdviceMovement,
@@ -174,6 +177,7 @@ import {
   memoisedDayDigest,
 } from './day-digest-memo.js';
 import type { StoredContextDay } from './db/context-day-store.js';
+import { openDbReadOnly } from './db/open.js';
 import { fileSource, readThreadWindow, readWindow, type SidecarSource, windowDays } from './db/source.js';
 import { DEFAULT_PR_LIMIT, resolveRepoDir, servePullRequestBody, servePullRequests } from './github.js';
 import {
@@ -4022,4 +4026,345 @@ export async function buildConcept(
     concept: toServedConcept(concept),
     meta: { storePath: read.storePath, store: read.store, total: read.concepts.length },
   };
+}
+
+/**
+ * What one recorded call turned out to be, decided here so the page never has to
+ * read a JSON column to find out.
+ *
+ * The distinction this exists to draw: Jev's client is built never to throw, so
+ * every failure comes back as an empty answer map and reaches the caller looking
+ * like a result. `failed` is the call that never produced answers at all — a 401,
+ * a 422, or a transport error that never got a status — and `partial` is the
+ * quieter one, where answers came back but fewer than were asked for.
+ */
+export type JevCallOutcome = 'ok' | 'partial' | 'empty' | 'failed';
+
+/** Which rows a read asks for. `all` is every row; the other two are the ones worth reading. */
+export type JevCallFilter = 'all' | 'unanswered' | 'failed';
+
+/** Whether a string off the query string names a filter. */
+export function isJevCallFilter(value: string): value is JevCallFilter {
+  return value === 'all' || value === 'unanswered' || value === 'failed';
+}
+
+/** One recorded exchange, as the table renders it. */
+export interface JevCallRow {
+  session: string;
+  id: number;
+  startedAt: string;
+  endedAt: string | null;
+  durationMs: number | null;
+  endpoint: string | null;
+  model: string | null;
+  questionCount: number;
+  answerCount: number;
+  /**
+   * How many questions came back with no answer. Derived from the two counts rather
+   * than from `unanswered_ids`, because the counts are `NOT NULL` and the id list is
+   * a JSON column — and sparing a reader that column is the point of this page.
+   */
+  unansweredCount: number;
+  /** Null means no HTTP response arrived at all; {@link JevCallRow.errorName} says what did. */
+  status: number | null;
+  ok: boolean;
+  requestBytes: number;
+  responseBytes: number;
+  /** Null, never 0: the response reported no usage, which is an unknown cost rather than a free one. */
+  usageInputTokens: number | null;
+  usageOutputTokens: number | null;
+  errorName: string | null;
+  errorMessage: string | null;
+  outcome: JevCallOutcome;
+}
+
+/** One recording-proxy run, for the rows that name it. */
+export interface JevSessionRow {
+  session: string;
+  startedAt: string;
+  /** Null when the proxy was killed rather than stopped cleanly. */
+  endedAt: string | null;
+  endpoint: string;
+  url: string | null;
+  health: string | null;
+  /** The run's own count of what it recorded; present on a clean stop only. */
+  recorded: number | null;
+}
+
+/** How the whole table breaks down, counted before any filter or limit narrows it. */
+export interface JevCallCounts {
+  total: number;
+  ok: number;
+  partial: number;
+  empty: number;
+  failed: number;
+  /** Questions asked across every row that got no answer back. */
+  unansweredQuestions: number;
+}
+
+export interface JevCallsResponse {
+  /** Newest first. */
+  calls: JevCallRow[];
+  /** The runs the returned calls belong to. */
+  sessions: JevSessionRow[];
+  meta: {
+    counts: JevCallCounts;
+    filter: JevCallFilter;
+    limit: number;
+    /** Rows matching the filter, which may exceed the number returned. */
+    matched: number;
+    returned: number;
+    /**
+     * False when there is no substrate to read — no database file, or one whose
+     * schema step has not reached these tables. A machine that has never run the
+     * recording proxy is the normal case, and it is an empty page rather than an error.
+     */
+    substrate: boolean;
+  };
+}
+
+/** Rows returned when no `?limit=` says otherwise. */
+const JEV_CALLS_DEFAULT_LIMIT = 200;
+
+/** The most any one read will return, however large a `?limit=` asks for. */
+const JEV_CALLS_MAX_LIMIT = 1000;
+
+/**
+ * The row shapes the selects below answer with. Every column is named explicitly.
+ *
+ * Both extend `Record<string, SQLOutputValue>`, the type `all()` returns: that makes
+ * each row type a narrowing of what SQLite hands back, so one direct assertion states
+ * it rather than a chain through `unknown`.
+ */
+interface JevCallDbRow extends Record<string, SQLOutputValue> {
+  session: string;
+  id: number;
+  started_at: string;
+  ended_at: string | null;
+  duration_ms: number | null;
+  endpoint: string | null;
+  model: string | null;
+  question_count: number;
+  answer_count: number;
+  status: number | null;
+  ok: number;
+  request_bytes: number;
+  response_bytes: number;
+  usage_input_tokens: number | null;
+  usage_output_tokens: number | null;
+  error_name: string | null;
+  error_message: string | null;
+}
+
+interface JevSessionDbRow extends Record<string, SQLOutputValue> {
+  session: string;
+  started_at: string;
+  ended_at: string | null;
+  endpoint: string;
+  url: string | null;
+  health: string | null;
+  recorded: number | null;
+}
+
+/**
+ * What a recorded call amounts to.
+ *
+ * `ok` is the record's own reading of the response, so anything it did not call ok
+ * is `failed` whether or not a status ever arrived. Past that, the counts decide:
+ * nothing asked is nothing missing, no answers at all is `empty`, and fewer answers
+ * than questions is `partial`.
+ */
+function jevOutcome(questionCount: number, answerCount: number, ok: boolean): JevCallOutcome {
+  if (!ok) return 'failed';
+  if (questionCount === 0) return 'ok';
+  if (answerCount === 0) return 'empty';
+  return answerCount < questionCount ? 'partial' : 'ok';
+}
+
+function toJevCallRow(row: JevCallDbRow): JevCallRow {
+  const ok = row.ok === 1;
+  return {
+    session: row.session,
+    id: row.id,
+    startedAt: row.started_at,
+    endedAt: row.ended_at,
+    durationMs: row.duration_ms,
+    endpoint: row.endpoint,
+    model: row.model,
+    questionCount: row.question_count,
+    answerCount: row.answer_count,
+    unansweredCount: Math.max(0, row.question_count - row.answer_count),
+    status: row.status,
+    ok,
+    requestBytes: row.request_bytes,
+    responseBytes: row.response_bytes,
+    usageInputTokens: row.usage_input_tokens,
+    usageOutputTokens: row.usage_output_tokens,
+    errorName: row.error_name,
+    errorMessage: row.error_message,
+    outcome: jevOutcome(row.question_count, row.answer_count, ok),
+  };
+}
+
+function emptyJevCalls(filter: JevCallFilter, limit: number, substrate: boolean): JevCallsResponse {
+  return {
+    calls: [],
+    sessions: [],
+    meta: {
+      counts: { total: 0, ok: 0, partial: 0, empty: 0, failed: 0, unansweredQuestions: 0 },
+      filter,
+      limit,
+      matched: 0,
+      returned: 0,
+      substrate,
+    },
+  };
+}
+
+/** `?limit=` as a row count, clamped; anything unreadable falls back to the default. */
+function jevLimit(raw: string | null | undefined): number {
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return JEV_CALLS_DEFAULT_LIMIT;
+  return Math.min(Math.floor(parsed), JEV_CALLS_MAX_LIMIT);
+}
+
+export interface JevCallsOptions {
+  filter?: JevCallFilter;
+  /** The raw `?limit=`; parsed and clamped here rather than by the caller. */
+  limit?: string | null;
+}
+
+/**
+ * The recorded Jev traffic, newest first.
+ *
+ * **Read-only, and it never migrates.** The rows are written by `db/ingest-jev.ts`
+ * from a keep a recording proxy in the sibling `my-command` repository owns; nothing
+ * here asks Jev anything. The handle is opened read-only and closed again per call,
+ * so this holds no state between requests and cannot change what it is looking at.
+ *
+ * **Having nothing to read is the normal state, not an error.** A machine that has
+ * never run the recording proxy has no database file, and one whose schema step has
+ * not reached `jev_call` has no such table — both answer with an empty payload and
+ * `meta.substrate: false`, which is what lets the page draw an empty state rather
+ * than a failure.
+ *
+ * The counts in `meta` are taken over the whole table, before the filter and the
+ * limit narrow it, so the page can say how much it is not showing.
+ */
+export function buildJevCalls(logDir: string, opts: JevCallsOptions = {}): JevCallsResponse {
+  const filter: JevCallFilter = opts.filter ?? 'all';
+  const limit = jevLimit(opts.limit);
+
+  let db: DatabaseSync;
+  try {
+    db = openDbReadOnly(logDir);
+  } catch {
+    // No database file at all — this machine has recorded nothing.
+    return emptyJevCalls(filter, limit, false);
+  }
+
+  try {
+    // A row is "short" when fewer answers came back than questions went out, and
+    // "failed" when the record did not call the response ok. Both readings are the
+    // page's whole question, so both are asked in SQL rather than after the fact.
+    const short = 'answer_count < question_count';
+    const failed = 'ok <> 1';
+    const where = filter === 'failed' ? `WHERE ${failed}` : filter === 'unanswered' ? `WHERE ${short}` : '';
+
+    // SAFETY: every column below is named in this select list and typed by
+    // `JevCallDbRow`; `where` is composed from the two literals above and never from
+    // input, and the limit is an integer clamped by `jevLimit`.
+    const calls = (
+      db
+        .prepare(
+          `SELECT session, id, started_at, ended_at, duration_ms, endpoint, model,
+                  question_count, answer_count, status, ok, request_bytes, response_bytes,
+                  usage_input_tokens, usage_output_tokens, error_name, error_message
+             FROM jev_call
+             ${where}
+            ORDER BY started_at DESC, session DESC, id DESC
+            LIMIT ?`,
+        )
+        .all(limit) as JevCallDbRow[]
+    ).map(toJevCallRow);
+
+    // SAFETY: each aggregate is aliased to the name the row type declares, and an
+    // aggregate with no GROUP BY always answers exactly one row.
+    const tally = db
+      .prepare(
+        `SELECT count(*) AS total,
+                sum(CASE WHEN ${failed} THEN 1 ELSE 0 END) AS failed,
+                sum(CASE WHEN ok = 1 AND question_count > 0 AND answer_count = 0 THEN 1 ELSE 0 END) AS empty,
+                sum(CASE WHEN ok = 1 AND answer_count > 0 AND ${short} THEN 1 ELSE 0 END) AS partial,
+                sum(CASE WHEN ${short} THEN question_count - answer_count ELSE 0 END) AS unanswered
+           FROM jev_call`,
+      )
+      .get() as {
+      total: number;
+      failed: number | null;
+      empty: number | null;
+      partial: number | null;
+      unanswered: number | null;
+    };
+
+    // SAFETY: `count(*)` aliased to `n` is the whole select list, so this is one row.
+    const matched =
+      where === '' ? tally.total : (db.prepare(`SELECT count(*) AS n FROM jev_call ${where}`).get() as { n: number }).n;
+
+    const failedCount = tally.failed ?? 0;
+    const emptyCount = tally.empty ?? 0;
+    const partialCount = tally.partial ?? 0;
+
+    // Only the runs the returned rows name, so a keep with hundreds of runs does not
+    // ship every one of them to render a page showing twenty calls.
+    const named = [...new Set(calls.map((call) => call.session))];
+    const sessions: JevSessionRow[] =
+      named.length === 0
+        ? []
+        : // SAFETY: every column is named in this select list and typed by
+          // `JevSessionDbRow`; the placeholder run is built from the row count alone.
+          (
+            db
+              .prepare(
+                `SELECT session, started_at, ended_at, endpoint, url, health, recorded
+                   FROM jev_session
+                  WHERE session IN (${named.map(() => '?').join(', ')})`,
+              )
+              .all(...named) as JevSessionDbRow[]
+          ).map((row) => ({
+            session: row.session,
+            startedAt: row.started_at,
+            endedAt: row.ended_at,
+            endpoint: row.endpoint,
+            url: row.url,
+            health: row.health,
+            recorded: row.recorded,
+          }));
+
+    return {
+      calls,
+      sessions,
+      meta: {
+        counts: {
+          total: tally.total,
+          ok: tally.total - failedCount - emptyCount - partialCount,
+          partial: partialCount,
+          empty: emptyCount,
+          failed: failedCount,
+          unansweredQuestions: tally.unanswered ?? 0,
+        },
+        filter,
+        limit,
+        matched,
+        returned: calls.length,
+        substrate: true,
+      },
+    };
+  } catch {
+    // A database whose schema step has not reached these tables: no such table, which
+    // every caller reads as "nothing recorded" rather than as a broken substrate.
+    return emptyJevCalls(filter, limit, false);
+  } finally {
+    db.close();
+  }
 }
