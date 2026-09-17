@@ -18,6 +18,7 @@ import {
 import { resolveSessionsDir } from '../sessions.js';
 import { ingestCommandRuns } from './ingest-commands.js';
 import { ingestConcepts } from './ingest-concepts.js';
+import { ingestJevCalls } from './ingest-jev.js';
 import { ingestSessions } from './ingest-sessions.js';
 
 /**
@@ -61,6 +62,14 @@ export interface IngestStats {
   concepts: number;
   /** True when the concept store had changed and was re-parsed this pass. */
   conceptsParsed: boolean;
+  /** Recorded Jev proxy runs the keep holds. */
+  jevSessions: number;
+  /** Recorded Jev calls the table holds. */
+  jevCalls: number;
+  /** Jev records parsed this pass — new, or changed since their watermark. */
+  jevParsed: number;
+  /** Jev records skipped this pass because their format version is not one this reader knows. */
+  jevSkipped: number;
 }
 
 function emptyStats(): IngestStats {
@@ -77,6 +86,10 @@ function emptyStats(): IngestStats {
     commandRunsParsed: false,
     concepts: 0,
     conceptsParsed: false,
+    jevSessions: 0,
+    jevCalls: 0,
+    jevParsed: 0,
+    jevSkipped: 0,
   };
 }
 
@@ -568,6 +581,16 @@ export async function ingest(db: DatabaseSync, logDir: string): Promise<IngestSt
   stats.concepts = concepts.concepts;
   stats.conceptsParsed = concepts.parsed;
   stats.deleted += concepts.deleted;
+
+  // The Jev keep is the one source that is not under `logDir` at all — it belongs
+  // to the sibling recording proxy and may not exist. Its watermarks are per
+  // record, under `jev/<session>/<file>`.
+  const jev = await ingestJevCalls(db);
+  stats.jevSessions = jev.sessions;
+  stats.jevCalls = jev.calls;
+  stats.jevParsed = jev.parsed;
+  stats.jevSkipped = jev.skipped;
+  stats.deleted += jev.deleted;
   return stats;
 }
 

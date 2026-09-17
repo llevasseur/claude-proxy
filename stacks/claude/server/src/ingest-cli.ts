@@ -1,3 +1,4 @@
+import { resolveJevRecordDir } from './db/ingest-jev.js';
 import { resolveDbPath } from './db/open.js';
 import { ingestOnce } from './db/runtime.js';
 import { errorMessage } from './errors.js';
@@ -32,6 +33,13 @@ async function main(): Promise<void> {
   console.log(
     `[ingest] ${stats.commandRuns} command run${stats.commandRuns === 1 ? '' : 's'}` +
       `, store ${stats.commandRunsParsed ? 're-read' : 'unchanged'}`,
+  );
+  console.log(
+    `[ingest] ${stats.jevCalls} jev call${stats.jevCalls === 1 ? '' : 's'}` +
+      ` across ${stats.jevSessions} recorded run${stats.jevSessions === 1 ? '' : 's'}` +
+      `, ${stats.jevParsed} parsed` +
+      `, ${stats.jevSkipped} skipped` +
+      ` from ${resolveJevRecordDir()}`,
   );
 }
 
