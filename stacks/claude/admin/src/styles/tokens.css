@@ -70,12 +70,21 @@
    * card (code, raw JSON, frontmatter); the veil is the faintest hover wash; the
    * stripe hatches delegated work; the scrim sits under the nav drawer. Shadows
    * are named by the edge they draw, so the light theme can soften all of them
-   * in one place. */
+   * in one place.
+   *
+   * The scrollbar's three are translucent for the same reason the well is: the
+   * bar sits over whatever the page happens to be showing, so a solid grey would
+   * read as a gutter cut into the layout rather than a control laid on it.
+   * `rest` is the pill sitting still, `live` the pill while the container is
+   * scrolling, and `track` the channel it runs in. */
     --well: rgba(0, 0, 0, 0.18);
     --well-deep: rgba(0, 0, 0, 0.28);
     --hover-veil: rgba(255, 255, 255, 0.03);
     --stripe: rgba(0, 0, 0, 0.35);
     --scrim: rgba(0, 0, 0, 0.5);
+    --scrollbar-track: rgba(255, 255, 255, 0.05);
+    --scrollbar-rest: rgba(233, 237, 243, 0.24);
+    --scrollbar-live: rgba(233, 237, 243, 0.48);
     --shadow-pop: 0 10px 30px rgba(0, 0, 0, 0.5);
     --shadow-pop-up: 0 -10px 30px rgba(0, 0, 0, 0.5);
     --shadow-tip: 0 6px 20px rgba(0, 0, 0, 0.45);
@@ -241,6 +250,9 @@
     --hover-veil: rgba(62, 52, 34, 0.05);
     --stripe: rgba(62, 52, 34, 0.16);
     --scrim: rgba(44, 37, 24, 0.4);
+    --scrollbar-track: rgba(62, 52, 34, 0.08);
+    --scrollbar-rest: rgba(42, 38, 32, 0.26);
+    --scrollbar-live: rgba(42, 38, 32, 0.5);
     --shadow-pop: 0 10px 30px rgba(62, 50, 30, 0.2);
     --shadow-pop-up: 0 -10px 30px rgba(62, 50, 30, 0.2);
     --shadow-tip: 0 6px 20px rgba(62, 50, 30, 0.16);

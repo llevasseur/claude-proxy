@@ -1,14 +1,20 @@
-/* The scrollbar, everywhere: a thin pill thumb on a transparent track that
- * fades in while its container scrolls and back out once it goes idle.
+/* The scrollbar, everywhere: a pill thumb running in a translucent channel.
  *
- * The fade rides a registered custom property rather than the thumb's own
- * `transition`: the `::-webkit-scrollbar-*` pseudo-elements do not run
+ * Two pieces, and only one of them moves. The track is always drawn, so a page
+ * that scrolls says so before anything is touched — macOS hides its own
+ * overlay bars until a gesture starts, and styling `::-webkit-scrollbar` at all
+ * opts the dashboard out of that, which is what leaves a gutter with nothing in
+ * it if the thumb is transparent at rest. The thumb is therefore visible at
+ * rest too, and only brightens while the container is scrolling.
+ *
+ * That brightening rides a registered custom property rather than the thumb's
+ * own `transition`: the `::-webkit-scrollbar-*` pseudo-elements do not run
  * transitions, so `--scrollbar-thumb` is registered as a <color> and the value
  * interpolates on the scroll container. `[data-scrolling]` is stamped by the
  * one listener in `scrollbar-activity.ts`.
  *
  * Durations are multiples of `--motion-duration`, so reduced motion flattens
- * the fade for free. */
+ * the change for free. */
 
 /* Inherited: `::-webkit-scrollbar-thumb` is a child of the element it scrolls, so
  * a non-inherited property resolves to its initial value there and the thumb
@@ -21,33 +27,41 @@
 
 @layer base {
   * {
-    /* Own colour, not an ancestor's: the page scrolling would otherwise reveal
+    /* Own colour, not an ancestor's: the page scrolling would otherwise brighten
      * every panel's bar with it. */
-    --scrollbar-thumb: transparent;
-    /* Entering is quicker than leaving: fade in at once, linger on the way out. */
+    --scrollbar-thumb: var(--scrollbar-rest);
+    /* Entering is quicker than leaving: brighten at once, fade back slowly. */
     transition: --scrollbar-thumb var(--motion-duration) var(--ease-out);
   }
 
   [data-scrolling] {
-    --scrollbar-thumb: var(--faint);
+    --scrollbar-thumb: var(--scrollbar-live);
     transition-duration: var(--motion-duration-fast);
   }
 
   ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: 12px;
+    height: 12px;
     background: transparent;
+  }
+  /* Transparent border + `background-clip` insets both pieces from the gutter's
+   * edges, so the pill floats in a channel narrower than the space reserved for
+   * it rather than filling the gutter wall to wall. Track and thumb take the
+   * same inset, so they stay concentric. */
+  ::-webkit-scrollbar-track {
+    background-color: var(--scrollbar-track);
+    border-radius: var(--radius-pill);
+    border: 3px solid transparent;
+    background-clip: content-box;
   }
   ::-webkit-scrollbar-thumb {
     background-color: var(--scrollbar-thumb);
     border-radius: var(--radius-pill);
-    /* Transparent border + `background-clip` insets the pill from the track's
-     * edges, so the thumb floats rather than filling the gutter. */
     border: 3px solid transparent;
     background-clip: content-box;
   }
-  /* The thumb still answers the pointer at rest, so reaching for the bar keeps
-   * working. */
+  /* Solid under the pointer, so grabbing the bar reads as a control rather than
+   * a hint. */
   ::-webkit-scrollbar-thumb:hover {
     background-color: var(--muted);
   }
@@ -59,11 +73,12 @@
   }
 
   /* Firefox has no scrollbar pseudo-elements; the standard properties read the
-   * same animated property. Gated so Chrome keeps the wider WebKit rendering. */
+   * same animated property and the same track. Gated so Chrome keeps the wider
+   * WebKit rendering. */
   @supports not selector(::-webkit-scrollbar) {
     * {
       scrollbar-width: thin;
-      scrollbar-color: var(--scrollbar-thumb) transparent;
+      scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
     }
   }
 }
