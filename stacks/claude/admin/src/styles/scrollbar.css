@@ -1,44 +1,23 @@
 /* The scrollbar, everywhere: a pill thumb running in a translucent channel.
  *
- * Two pieces, and only one of them moves. The track is always drawn, so a page
- * that scrolls says so before anything is touched — macOS hides its own
- * overlay bars until a gesture starts, and styling `::-webkit-scrollbar` at all
- * opts the dashboard out of that, which is what leaves a gutter with nothing in
- * it if the thumb is transparent at rest. The thumb is therefore visible at
- * rest too, and only brightens while the container is scrolling.
+ * Two pieces, and both are always drawn. The track says a page can scroll before
+ * anything is touched — macOS hides its own overlay bars until a gesture starts,
+ * and styling `::-webkit-scrollbar` at all opts the dashboard out of that, which
+ * is what leaves a reserved gutter with nothing in it if the thumb is invisible
+ * at rest. The thumb is therefore visible at rest too, and steps up a shade
+ * while the container is scrolling.
  *
- * That brightening rides a registered custom property rather than the thumb's
- * own `transition`: the `::-webkit-scrollbar-*` pseudo-elements do not run
- * transitions, so `--scrollbar-thumb` is registered as a <color> and the value
- * interpolates on the scroll container. `[data-scrolling]` is stamped by the
- * one listener in `scrollbar-activity.ts`.
- *
- * Durations are multiples of `--motion-duration`, so reduced motion flattens
- * the change for free. */
-
-/* Inherited: `::-webkit-scrollbar-thumb` is a child of the element it scrolls, so
- * a non-inherited property resolves to its initial value there and the thumb
- * stays transparent whatever the scroller says. */
-@property --scrollbar-thumb {
-  syntax: "<color>";
-  inherits: true;
-  initial-value: transparent;
-}
+ * That step is a plain rule on the pseudo-element, matched off the
+ * `[data-scrolling]` attribute the one listener in `scrollbar-activity.ts`
+ * stamps. It is deliberately not a transition and not a custom property, and
+ * both of those were tried: `::-webkit-scrollbar-*` pseudo-elements run no
+ * transitions, and Chrome does not repaint them when an inherited custom
+ * property changes on the scroller — a thumb painted once keeps that colour
+ * however the property is rewritten. A selector match changing does repaint, so
+ * the state change is expressed as a selector. The step is instant, which is why
+ * the sheet has no duration to flatten under reduced motion. */
 
 @layer base {
-  * {
-    /* Own colour, not an ancestor's: the page scrolling would otherwise brighten
-     * every panel's bar with it. */
-    --scrollbar-thumb: var(--scrollbar-rest);
-    /* Entering is quicker than leaving: brighten at once, fade back slowly. */
-    transition: --scrollbar-thumb var(--motion-duration) var(--ease-out);
-  }
-
-  [data-scrolling] {
-    --scrollbar-thumb: var(--scrollbar-live);
-    transition-duration: var(--motion-duration-fast);
-  }
-
   ::-webkit-scrollbar {
     width: 12px;
     height: 12px;
@@ -55,13 +34,22 @@
     background-clip: content-box;
   }
   ::-webkit-scrollbar-thumb {
-    background-color: var(--scrollbar-thumb);
+    background-color: var(--scrollbar-rest);
     border-radius: var(--radius-pill);
     border: 3px solid transparent;
     background-clip: content-box;
   }
+  /* The scroller's own attribute, not an ancestor's: the page scrolling would
+   * otherwise light every panel's bar with it. The root scroller is the one
+   * exception, and it is the listener's to handle — Chrome reads the viewport
+   * bar's styles off `<body>`, so `scrollbar-activity.ts` stamps `<html>` and
+   * `<body>` together for it. */
+  [data-scrolling]::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-live);
+  }
   /* Solid under the pointer, so grabbing the bar reads as a control rather than
-   * a hint. */
+   * a hint. Declared after the scrolling state, which it shares a specificity
+   * with and has to beat — dragging the thumb scrolls the container. */
   ::-webkit-scrollbar-thumb:hover {
     background-color: var(--muted);
   }
@@ -72,13 +60,16 @@
     background: transparent;
   }
 
-  /* Firefox has no scrollbar pseudo-elements; the standard properties read the
-   * same animated property and the same track. Gated so Chrome keeps the wider
-   * WebKit rendering. */
+  /* Firefox has no scrollbar pseudo-elements; the standard properties carry the
+   * same two colours and the same state. Gated so Chrome keeps the wider WebKit
+   * rendering. */
   @supports not selector(::-webkit-scrollbar) {
     * {
       scrollbar-width: thin;
-      scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+      scrollbar-color: var(--scrollbar-rest) var(--scrollbar-track);
+    }
+    [data-scrolling] {
+      scrollbar-color: var(--scrollbar-live) var(--scrollbar-track);
     }
   }
 }
