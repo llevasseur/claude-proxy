@@ -14,13 +14,18 @@ export interface ModelPrice {
  * all map to the opus row). Numbers are list prices in $/MTok.
  *
  * A row prices one generation and every model matching its keyword bills at it,
- * so name the generation when changing a row. These are Opus 5, Sonnet 5,
- * Haiku 4.5.
+ * so name the generation when changing a row. These are Opus 5.5, Opus 5,
+ * Sonnet 5, Haiku 4.5.
+ *
+ * Keys are tried in declaration order and the first match wins, so a
+ * generation-specific key (`opus-5-5`) must sit above its family key (`opus`).
  *
  * `cacheWrite` is 1.25x `input` (5-minute TTL) and `cacheRead` 0.1x; a row
- * breaking that shape is a transcription error.
+ * breaking that shape is a transcription error. Opus 5.5 is the one exception:
+ * its published cache read is $0.20, which is 0.05x input.
  */
 export const MODEL_PRICES = {
+  'opus-5-5': { input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2 },
   opus: { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
   // Sonnet 5 intro pricing ($2/$10) runs to 2026-08-31; list is carried instead.
   sonnet: { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 },

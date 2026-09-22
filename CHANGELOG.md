@@ -10,6 +10,10 @@ This project has not cut a release yet, so everything below sits under
 
 ## [Unreleased]
 
+### Changed
+
+- **Opus 5.5 requests are priced at Opus 5.5 rates.** `claude-opus-5-5` contains `opus`, so [`priceFor`](stacks/claude/core/src/pricing.ts) billed it at the Opus 5 row. A new `opus-5-5` row sits above `opus` and carries $4 input, $20 output, $5 cache write and $0.20 cache read per MTok. The cache read is 0.05x input, not the usual 0.1x, and the ratio test names that one exception. `claude-opus-5` and `claude-opus-5[1m]` still resolve to the Opus 5 row.
+
 ### Fixed
 
 - **A keep-alive ping can read the reply it already receives, so its token counts are real.** A forced ping answered 200 with all four counts at 0 and the verdict `no-usage-reported`, because the stored headers replayed Claude Code's own `accept-encoding` and [`httpsPing`](stacks/claude/proxy/keepalive.ts) has no decompressor — this package carries no runtime dependencies. `accept-encoding` now joins `DROPPED_HEADERS`, requesting identity encoding exactly as `forwardHeaders` does on the forward path.
