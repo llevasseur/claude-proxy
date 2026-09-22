@@ -28,14 +28,10 @@ export function installScrollbarActivity(): void {
   document.addEventListener(
     'scroll',
     (event) => {
-      /* The root scroller reports `document` as the target, and it takes both
-       * elements rather than either one. Chrome resolves the viewport
-       * scrollbar's `::-webkit-scrollbar-*` styles from `<body>`, so stamping
-       * `<html>` alone leaves the page's own thumb at its resting colour while
-       * every other scroller brightens; Firefox's `scrollbar-color` propagates
-       * from `<html>`, so dropping that one trades one browser for the other.
-       * Measured, not assumed — see the round 2 shots on the branch that added
-       * this. */
+      /* The root scroller reports `document` as the target, and takes both
+       * elements rather than either one: Chrome resolves the viewport
+       * scrollbar's `::-webkit-scrollbar-*` styles from `<body>`, Firefox's
+       * `scrollbar-color` propagates from `<html>`. */
       if (event.target === document) {
         stamp(document.documentElement);
         stamp(document.body);

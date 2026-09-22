@@ -1,21 +1,16 @@
 /* The scrollbar, everywhere: a pill thumb running in a translucent channel.
  *
- * Two pieces, and both are always drawn. The track says a page can scroll before
- * anything is touched — macOS hides its own overlay bars until a gesture starts,
- * and styling `::-webkit-scrollbar` at all opts the dashboard out of that, which
- * is what leaves a reserved gutter with nothing in it if the thumb is invisible
- * at rest. The thumb is therefore visible at rest too, and steps up a shade
- * while the container is scrolling.
+ * Both pieces are always drawn. Styling `::-webkit-scrollbar` at all opts the
+ * dashboard out of the platform's overlay bars, so a scrolling page gets a
+ * reserved gutter whatever this sheet says — an invisible thumb leaves it empty.
+ * The thumb rests visible and steps up a shade while its container scrolls.
  *
- * That step is a plain rule on the pseudo-element, matched off the
- * `[data-scrolling]` attribute the one listener in `scrollbar-activity.ts`
- * stamps. It is deliberately not a transition and not a custom property, and
- * both of those were tried: `::-webkit-scrollbar-*` pseudo-elements run no
- * transitions, and Chrome does not repaint them when an inherited custom
- * property changes on the scroller — a thumb painted once keeps that colour
- * however the property is rewritten. A selector match changing does repaint, so
- * the state change is expressed as a selector. The step is instant, which is why
- * the sheet has no duration to flatten under reduced motion. */
+ * That step is a selector match off the `[data-scrolling]` attribute the one
+ * listener in `scrollbar-activity.ts` stamps, not a transition and not a custom
+ * property. Pseudo-elements run no transitions, and Chrome does not repaint them
+ * when an inherited custom property changes on the scroller; a selector match
+ * does repaint. The step is instant, so the sheet has no duration for reduced
+ * motion to flatten. */
 
 @layer base {
   ::-webkit-scrollbar {
@@ -24,9 +19,7 @@
     background: transparent;
   }
   /* Transparent border + `background-clip` insets both pieces from the gutter's
-   * edges, so the pill floats in a channel narrower than the space reserved for
-   * it rather than filling the gutter wall to wall. Track and thumb take the
-   * same inset, so they stay concentric. */
+   * edges. Track and thumb take the same inset, so they stay concentric. */
   ::-webkit-scrollbar-track {
     background-color: var(--scrollbar-track);
     border-radius: var(--radius-pill);
@@ -39,17 +32,13 @@
     border: 3px solid transparent;
     background-clip: content-box;
   }
-  /* The scroller's own attribute, not an ancestor's: the page scrolling would
-   * otherwise light every panel's bar with it. The root scroller is the one
-   * exception, and it is the listener's to handle — Chrome reads the viewport
-   * bar's styles off `<body>`, so `scrollbar-activity.ts` stamps `<html>` and
-   * `<body>` together for it. */
+  /* The scroller's own attribute, not an ancestor's. The root is the exception
+   * and `scrollbar-activity.ts` handles it, stamping `<html>` and `<body>`. */
   [data-scrolling]::-webkit-scrollbar-thumb {
     background-color: var(--scrollbar-live);
   }
-  /* Solid under the pointer, so grabbing the bar reads as a control rather than
-   * a hint. Declared after the scrolling state, which it shares a specificity
-   * with and has to beat — dragging the thumb scrolls the container. */
+  /* Declared after the scrolling state, which it shares a specificity with and
+   * has to beat — dragging the thumb scrolls the container. */
   ::-webkit-scrollbar-thumb:hover {
     background-color: var(--muted);
   }

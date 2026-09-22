@@ -72,11 +72,8 @@
    * are named by the edge they draw, so the light theme can soften all of them
    * in one place.
    *
-   * The scrollbar's three are translucent for the same reason the well is: the
-   * bar sits over whatever the page happens to be showing, so a solid grey would
-   * read as a gutter cut into the layout rather than a control laid on it.
-   * `rest` is the pill sitting still, `live` the pill while the container is
-   * scrolling, and `track` the channel it runs in. */
+   * `--scrollbar-rest` is the pill sitting still, `--scrollbar-live` the pill
+   * while its container scrolls, `--scrollbar-track` the channel it runs in. */
     --well: rgba(0, 0, 0, 0.18);
     --well-deep: rgba(0, 0, 0, 0.28);
     --hover-veil: rgba(255, 255, 255, 0.03);
