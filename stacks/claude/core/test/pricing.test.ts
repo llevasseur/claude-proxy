@@ -14,6 +14,13 @@ describe('priceFor', () => {
     expect(priceFor('claude-haiku-4-5-20251001')).toBe(MODEL_PRICES.haiku);
   });
 
+  it('prices Opus 5.5 apart from the rest of the opus family', () => {
+    expect(priceFor('claude-opus-5-5')).toBe(MODEL_PRICES['opus-5-5']);
+    expect(priceFor('claude-opus-5-5[1m]')).toBe(MODEL_PRICES['opus-5-5']);
+    expect(priceFor('claude-opus-5[1m]')).toBe(MODEL_PRICES.opus);
+    expect(priceFor('claude-opus-5-20260514')).toBe(MODEL_PRICES.opus);
+  });
+
   it('falls back for unknown models', () => {
     expect(priceFor('gpt-5')).toBe(FALLBACK_PRICE);
     expect(priceFor('')).toBe(FALLBACK_PRICE);
@@ -21,9 +28,10 @@ describe('priceFor', () => {
 });
 
 describe('MODEL_PRICES', () => {
-  // The one place the sheet's own values are pinned. Opus 5, Sonnet 5, Haiku 4.5
-  // list, $/MTok.
+  // The one place the sheet's own values are pinned. Opus 5.5, Opus 5, Sonnet 5,
+  // Haiku 4.5 list, $/MTok.
   it('carries the current generation, not the one before it', () => {
+    expect(MODEL_PRICES['opus-5-5']).toEqual({ input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2 });
     expect(MODEL_PRICES.opus).toEqual({ input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 });
     expect(MODEL_PRICES.sonnet).toEqual({ input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 });
     expect(MODEL_PRICES.haiku).toEqual({ input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.1 });
@@ -32,7 +40,9 @@ describe('MODEL_PRICES', () => {
   it('keeps cache writes at 1.25x input and cache reads at 0.1x', () => {
     for (const [family, p] of Object.entries(MODEL_PRICES)) {
       expect(p.cacheWrite / p.input, `${family} cacheWrite`).toBeCloseTo(1.25, 10);
-      expect(p.cacheRead / p.input, `${family} cacheRead`).toBeCloseTo(0.1, 10);
+      // Opus 5.5's published cache read is 0.05x input, the one row off the shape.
+      const readRatio = family === 'opus-5-5' ? 0.05 : 0.1;
+      expect(p.cacheRead / p.input, `${family} cacheRead`).toBeCloseTo(readRatio, 10);
     }
   });
 
