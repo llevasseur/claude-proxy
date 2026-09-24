@@ -10,6 +10,10 @@ This project has not cut a release yet, so everything below sits under
 
 ## [Unreleased]
 
+### Added
+
+- **The Context size thread page shows what the thread cost.** A Cost tile and a per-model table split the total into input, output, cache write and cache read. Each request is priced at its own model's rates through the same `estimateCost` the Dashboard and Trends sum.
+
 ### Changed
 
 - **Opus 5.5 requests are priced at Opus 5.5 rates.** `claude-opus-5-5` contains `opus`, so [`priceFor`](stacks/claude/core/src/pricing.ts) billed it at the Opus 5 row. A new `opus-5-5` row sits above `opus` and carries $4 input, $20 output, $5 cache write and $0.20 cache read per MTok. The cache read is 0.05x input, not the usual 0.1x, and the ratio test names that one exception. `claude-opus-5` and `claude-opus-5[1m]` still resolve to the Opus 5 row.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { estimateCost, FALLBACK_PRICE, MODEL_PRICES, priceFor } from '../src/pricing.js';
+import { estimateCost, FALLBACK_PRICE, MODEL_PRICES, priceFor, summarizeCost } from '../src/pricing.js';
 
 describe('priceFor', () => {
   it('matches families by substring', () => {
@@ -70,5 +70,41 @@ describe('estimateCost', () => {
   it('is zero for zero tokens', () => {
     const cost = estimateCost({ input: 0, output: 0, cacheRead: 0, cacheCreation: 0, realInput: 0 }, 'claude-opus-4-8');
     expect(cost.total).toBe(0);
+  });
+});
+
+describe('summarizeCost', () => {
+  const tokens = {
+    input: 1_000_000,
+    output: 1_000_000,
+    cacheRead: 1_000_000,
+    cacheCreation: 1_000_000,
+    realInput: 3_000_000,
+  };
+
+  it('prices each request at its own model and rolls up per model, dearest first', () => {
+    const summary = summarizeCost([
+      { model: 'claude-haiku-4-5', tokens },
+      { model: 'claude-opus-5-5', tokens },
+      { model: 'claude-opus-5-5', tokens },
+    ]);
+    const opus55 = estimateCost(tokens, 'claude-opus-5-5').total;
+    const haiku = estimateCost(tokens, 'claude-haiku-4-5').total;
+
+    expect(summary.requests).toBe(3);
+    expect(summary.tokens.output).toBe(3_000_000);
+    expect(summary.cost.total).toBeCloseTo(2 * opus55 + haiku);
+    expect(summary.byModel.map((m) => [m.model, m.requests])).toEqual([
+      ['claude-opus-5-5', 2],
+      ['claude-haiku-4-5', 1],
+    ]);
+    expect(summary.byModel[0]!.cost.cacheRead).toBeCloseTo(2 * MODEL_PRICES['opus-5-5'].cacheRead);
+  });
+
+  it('is empty for no requests', () => {
+    const summary = summarizeCost([]);
+    expect(summary.requests).toBe(0);
+    expect(summary.cost.total).toBe(0);
+    expect(summary.byModel).toEqual([]);
   });
 });

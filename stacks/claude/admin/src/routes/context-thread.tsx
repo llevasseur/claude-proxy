@@ -1,4 +1,4 @@
-import { apiRouteUrl, type ContextEntry } from '@agent-proxy/claude-core';
+import { apiRouteUrl, type ContextEntry, type CostSummary } from '@agent-proxy/claude-core';
 import { useQuery } from '@tanstack/react-query';
 import { createRoute, Link, useParams, useSearch } from '@tanstack/react-router';
 import { type CSSProperties, useMemo } from 'react';
@@ -8,7 +8,7 @@ import { LiveIndicator } from '../components/LiveIndicator';
 import { QueryState } from '../components/QueryState';
 import { Skeleton, type SkeletonColumn, SkeletonStats, SkeletonTable } from '../components/Skeleton';
 import { StatCard } from '../components/StatCard';
-import { fmtBytes, fmtInt, fmtLocalTs, LOCAL_TZ_ABBR } from '../format';
+import { fmtBytes, fmtInt, fmtLocalTs, fmtUsd, LOCAL_TZ_ABBR } from '../format';
 import type { JsonRecord } from '../json';
 import { rootRoute } from '../route-root';
 import { useLiveQuery } from '../useLiveQuery';
@@ -113,7 +113,7 @@ export function ContextThreadPage() {
               No captured request of thread <span className='rule-name'>{threadId}</span> in the last {days} days.
             </div>
           ) : (
-            <ThreadBody entries={data.entries} prompt={data.prompt} threadId={threadId} days={days} />
+            <ThreadBody entries={data.entries} prompt={data.prompt} cost={data.cost} threadId={threadId} days={days} />
           ))}
       </QueryState>
     </section>
@@ -126,7 +126,7 @@ function ThreadSkeleton() {
       <div className='card'>
         <Skeleton w='60%' />
       </div>
-      <SkeletonStats count={4} />
+      <SkeletonStats count={5} />
       <div className='card'>
         <Skeleton w='30%' className='skeleton-h2' />
         <SkeletonTable columns={REQUEST_COLUMNS} rows={8} />
@@ -138,11 +138,13 @@ function ThreadSkeleton() {
 function ThreadBody({
   entries,
   prompt,
+  cost,
   threadId,
   days,
 }: {
   entries: ContextEntry[];
   prompt: string | null;
+  cost: CostSummary;
   threadId: string;
   days: number;
 }) {
@@ -172,10 +174,95 @@ function ThreadBody({
         <StatCard label='Peak context' value={fmtInt(stats.peak)} sub='tokens' />
         <StatCard label='Average context' value={fmtInt(stats.avg)} sub='tokens / request' />
         <StatCard label='Span' value={fmtLocalTs(stats.first)} sub={`→ ${fmtLocalTs(stats.last)}`} />
+        <StatCard label='Cost' value={fmtUsd(cost.cost.total)} sub='at each model’s rates' />
       </div>
+
+      <CostTable cost={cost} />
 
       <RequestsTable entries={entries} peak={stats.peak} threadId={threadId} days={days} />
     </>
+  );
+}
+
+/** The thread's cost per model, split by token bucket. */
+function CostTable({ cost }: { cost: CostSummary }) {
+  const rows = cost.byModel;
+  return (
+    <div className='card'>
+      <h2>Cost</h2>
+      <div className='table-scroll'>
+        <table className='table'>
+          <thead>
+            <tr>
+              <th style={COLUMN.model}>Model</th>
+              <th className='num' style={COLUMN.num}>
+                Requests
+              </th>
+              <th className='num' style={COLUMN.num}>
+                Input
+              </th>
+              <th className='num' style={COLUMN.num}>
+                Output
+              </th>
+              <th className='num' style={COLUMN.num}>
+                Cache write
+              </th>
+              <th className='num' style={COLUMN.num}>
+                Cache read
+              </th>
+              <th className='num' style={COLUMN.num}>
+                Total
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <CostRow key={row.model} label={row.model} requests={row.requests} cost={row.cost} />
+            ))}
+            {rows.length > 1 && <CostRow label='All models' requests={cost.requests} cost={cost.cost} total />}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function CostRow({
+  label,
+  requests,
+  cost,
+  total = false,
+}: {
+  label: string;
+  requests: number;
+  cost: CostSummary['cost'];
+  total?: boolean;
+}) {
+  const Cell = total ? 'strong' : 'span';
+  return (
+    <tr>
+      <td className={total ? undefined : 'muted'} style={COLUMN.model}>
+        <Cell>{label}</Cell>
+      </td>
+      <td className='num' style={COLUMN.num}>
+        <Cell>{fmtInt(requests)}</Cell>
+      </td>
+      <td className='num' style={COLUMN.num}>
+        <Cell>{fmtUsd(cost.input)}</Cell>
+      </td>
+      <td className='num' style={COLUMN.num}>
+        <Cell>{fmtUsd(cost.output)}</Cell>
+      </td>
+      <td className='num' style={COLUMN.num}>
+        <Cell>{fmtUsd(cost.cacheWrite)}</Cell>
+      </td>
+      <td className='num' style={COLUMN.num}>
+        <Cell>{fmtUsd(cost.cacheRead)}</Cell>
+      </td>
+      <td className='num' style={COLUMN.num}>
+        <strong>{fmtUsd(cost.total)}</strong>
+      </td>
+    </tr>
   );
 }
 
