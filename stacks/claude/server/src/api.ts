@@ -1555,7 +1555,7 @@ export interface ContextThreadResponse {
   entries: ContextEntry[];
   /** What the person typed to open the thread; null when it recorded none. */
   prompt: string | null;
-  /** The thread's requests priced at each one's own model rates, as the usage digests price them. */
+  /** The thread's requests priced at each one's own model rates. */
   cost: CostSummary;
   /**
    * `files` counts **this thread's** captured requests in the window, not the

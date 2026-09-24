@@ -108,11 +108,7 @@ function addTokens(a: AuditTokens, b: AuditTokens): AuditTokens {
   };
 }
 
-/**
- * Price every request at its own model's rates and roll the result up per model —
- * the same {@link estimateCost} the usage digests sum, so a thread's total is on the
- * Dashboard's and Trends' scale. Pure.
- */
+/** Price each request at its own model's rates with {@link estimateCost}, as the usage digests do, rolled up per model. Pure. */
 export function summarizeCost(requests: readonly { model: string; tokens: AuditTokens }[]): CostSummary {
   const byModel = new Map<string, ModelCost>();
   let tokens = ZERO_TOKENS;

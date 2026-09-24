@@ -184,11 +184,7 @@ function ThreadBody({
   );
 }
 
-/**
- * What the thread cost, one row per model it used, split by token bucket — each request
- * priced at its own model's input, output and cache rates, the pricing the Dashboard and
- * Trends sum.
- */
+/** The thread's cost per model, split by token bucket. */
 function CostTable({ cost }: { cost: CostSummary }) {
   const rows = cost.byModel;
   return (
