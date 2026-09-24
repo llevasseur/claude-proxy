@@ -22,6 +22,7 @@ import type {
   ContextAggregates,
   ContextDayAggregate,
   ContextEntry,
+  CostSummary,
   HookRow,
   IdeaAreaCounts,
   IdeaClaimRefusal,
@@ -247,6 +248,8 @@ export interface ContextThreadResponse {
   /** Every captured request of the thread in the window, oldest first. */
   entries: ContextEntry[];
   prompt: string | null;
+  /** The thread's requests priced at each one's own model rates. */
+  cost: CostSummary;
   meta: { days: number; files: number; parseErrors: number };
 }
 /**

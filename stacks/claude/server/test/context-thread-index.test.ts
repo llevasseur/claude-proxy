@@ -113,6 +113,10 @@ describe('the thread read', () => {
     const thread = await buildContextThread(logDir, MINE, 3, NOW, dbSource(db));
 
     expect(thread.entries.map((e) => e.timestamp)).toEqual([morning(RECENT_DAY), evening(TODAY)]);
+    // Two requests of this thread, and nothing of the other thread's, are priced.
+    expect(thread.cost.requests).toBe(2);
+    expect(thread.cost.byModel.map((m) => m.model)).toEqual(['claude-opus-5']);
+    expect(thread.cost.cost.total).toBeGreaterThan(0);
     // The window holds five other requests; none of them is counted here.
     expect(thread.meta.files).toBe(2);
     expect(thread.meta.parseErrors).toBe(0);

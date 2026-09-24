@@ -78,3 +78,61 @@ export function addCost(a: CostBreakdown, b: CostBreakdown): CostBreakdown {
     total: a.total + b.total,
   };
 }
+
+/** One model's share of a set of requests: its token buckets and what they cost. */
+export interface ModelCost {
+  model: string;
+  requests: number;
+  tokens: AuditTokens;
+  cost: CostBreakdown;
+}
+
+/** What a set of requests cost, in total and per model. */
+export interface CostSummary {
+  requests: number;
+  tokens: AuditTokens;
+  cost: CostBreakdown;
+  /** Most expensive model first. */
+  byModel: ModelCost[];
+}
+
+const ZERO_TOKENS: AuditTokens = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, realInput: 0 };
+
+function addTokens(a: AuditTokens, b: AuditTokens): AuditTokens {
+  return {
+    input: a.input + b.input,
+    output: a.output + b.output,
+    cacheRead: a.cacheRead + b.cacheRead,
+    cacheCreation: a.cacheCreation + b.cacheCreation,
+    realInput: a.realInput + b.realInput,
+  };
+}
+
+/**
+ * Price every request at its own model's rates and roll the result up per model —
+ * the same {@link estimateCost} the usage digests sum, so a thread's total is on the
+ * Dashboard's and Trends' scale. Pure.
+ */
+export function summarizeCost(requests: readonly { model: string; tokens: AuditTokens }[]): CostSummary {
+  const byModel = new Map<string, ModelCost>();
+  let tokens = ZERO_TOKENS;
+  let cost = ZERO_COST;
+  for (const r of requests) {
+    const priced = estimateCost(r.tokens, r.model);
+    tokens = addTokens(tokens, r.tokens);
+    cost = addCost(cost, priced);
+    const held = byModel.get(r.model);
+    byModel.set(r.model, {
+      model: r.model,
+      requests: (held?.requests ?? 0) + 1,
+      tokens: addTokens(held?.tokens ?? ZERO_TOKENS, r.tokens),
+      cost: addCost(held?.cost ?? ZERO_COST, priced),
+    });
+  }
+  return {
+    requests: requests.length,
+    tokens,
+    cost,
+    byModel: [...byModel.values()].sort((a, b) => b.cost.total - a.cost.total),
+  };
+}

@@ -32,6 +32,7 @@ import {
   type ContextDayAggregate,
   type ContextEntry,
   type ContextThreadRow,
+  type CostSummary,
   canShipIdea,
   commandRunProfiles,
   computeAliasPosture,
@@ -144,6 +145,7 @@ import {
   summarizeAgentTypes,
   summarizeBreakdownPatterns,
   summarizeCommands,
+  summarizeCost,
   summarizePromptMix,
   summarizeSystemPrompt,
   type TopTool,
@@ -1553,6 +1555,8 @@ export interface ContextThreadResponse {
   entries: ContextEntry[];
   /** What the person typed to open the thread; null when it recorded none. */
   prompt: string | null;
+  /** The thread's requests priced at each one's own model rates, as the usage digests price them. */
+  cost: CostSummary;
   /**
    * `files` counts **this thread's** captured requests in the window, not the
    * window's — the read is by thread id now, so there is no count of the rest of
@@ -1594,10 +1598,12 @@ export async function buildContextThread(
     .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   const prompts = await source.readRootPrompts(logDir, mine.length ? [threadId] : []);
   const entries = attachContextPrompts(mine, prompts);
+  const priced = sidecars.filter((s): s is AuditSidecar => isAuditSidecar(s) && s.session?.threadId === threadId);
   return {
     threadId,
     entries,
     prompt: entries.find((e) => e.prompt)?.prompt ?? null,
+    cost: summarizeCost(priced),
     meta: { days, files, parseErrors },
   };
 }
