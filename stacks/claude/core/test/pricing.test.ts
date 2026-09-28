@@ -21,6 +21,13 @@ describe('priceFor', () => {
     expect(priceFor('claude-opus-5-20260514')).toBe(MODEL_PRICES.opus);
   });
 
+  it('prices Sonnet 5.5 apart from the rest of the sonnet family', () => {
+    expect(priceFor('claude-sonnet-5-5')).toBe(MODEL_PRICES['sonnet-5-5']);
+    expect(priceFor('claude-sonnet-5-5[1m]')).toBe(MODEL_PRICES['sonnet-5-5']);
+    expect(priceFor('claude-sonnet-5[1m]')).toBe(MODEL_PRICES.sonnet);
+    expect(priceFor('claude-sonnet-5-20260514')).toBe(MODEL_PRICES.sonnet);
+  });
+
   it('falls back for unknown models', () => {
     expect(priceFor('gpt-5')).toBe(FALLBACK_PRICE);
     expect(priceFor('')).toBe(FALLBACK_PRICE);
@@ -33,6 +40,7 @@ describe('MODEL_PRICES', () => {
   it('carries the current generation, not the one before it', () => {
     expect(MODEL_PRICES['opus-5-5']).toEqual({ input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2 });
     expect(MODEL_PRICES.opus).toEqual({ input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 });
+    expect(MODEL_PRICES['sonnet-5-5']).toEqual({ input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2 });
     expect(MODEL_PRICES.sonnet).toEqual({ input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 });
     expect(MODEL_PRICES.haiku).toEqual({ input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.1 });
   });
