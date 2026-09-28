@@ -16,6 +16,7 @@ This project has not cut a release yet, so everything below sits under
 
 ### Changed
 
+- **Sonnet 5 and 5.5 requests are priced at their own $2/$10 rates.** `claude-sonnet-5` and `claude-sonnet-5-5` contain `sonnet`, so [`priceFor`](stacks/claude/core/src/pricing.ts) billed both at the $3/$15 Sonnet row. New `sonnet-5-5` and `sonnet-5` rows sit above `sonnet` and carry $2 input, $10 output, $2.50 cache write and $0.20 cache read per MTok, because Anthropic's pricing page now calls $2/$10 Sonnet 5's standard price. Sonnet 4.6 and older stay on the Sonnet row.
 - **Opus 5.5 requests are priced at Opus 5.5 rates.** `claude-opus-5-5` contains `opus`, so [`priceFor`](stacks/claude/core/src/pricing.ts) billed it at the Opus 5 row. A new `opus-5-5` row sits above `opus` and carries $4 input, $20 output, $5 cache write and $0.20 cache read per MTok. The cache read is 0.05x input, not the usual 0.1x, and the ratio test names that one exception. `claude-opus-5` and `claude-opus-5[1m]` still resolve to the Opus 5 row.
 
 ### Fixed
