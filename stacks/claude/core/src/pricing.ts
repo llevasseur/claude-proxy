@@ -15,11 +15,12 @@ export interface ModelPrice {
  *
  * A row prices one generation and every model matching its keyword bills at it,
  * so name the generation when changing a row. These are Opus 5.5, Opus 5,
- * Sonnet 5.5, Sonnet 5, Haiku 4.5.
+ * Sonnet 5.5, Sonnet 5, Sonnet 4.6 and older, Haiku 4.5.
  *
  * Keys are tried in declaration order and the first match wins, so a
- * generation-specific key (`opus-5-5`, `sonnet-5-5`) must sit above its family
- * key (`opus`, `sonnet`).
+ * generation-specific key (`opus-5-5`, `sonnet-5-5`, `sonnet-5`) must sit above
+ * its family key (`opus`, `sonnet`), and `sonnet-5-5` above `sonnet-5`, since
+ * `claude-sonnet-5-5` contains both.
  *
  * `cacheWrite` is 1.25x `input` (5-minute TTL) and `cacheRead` 0.1x; a row
  * breaking that shape is a transcription error. Opus 5.5 is the one exception:
@@ -29,7 +30,9 @@ export const MODEL_PRICES = {
   'opus-5-5': { input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2 },
   opus: { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
   'sonnet-5-5': { input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2 },
-  // Sonnet 5 intro pricing ($2/$10) runs to 2026-08-31; list is carried instead.
+  // $2/$10 is Sonnet 5's standard price: the pricing page's footnote 3 says the
+  // planned 2026-09-01 increase to $3/$15 will not happen.
+  'sonnet-5': { input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2 },
   sonnet: { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 },
   haiku: { input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.1 },
 } satisfies Record<string, ModelPrice>;
