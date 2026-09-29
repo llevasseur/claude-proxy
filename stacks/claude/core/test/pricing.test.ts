@@ -21,6 +21,12 @@ describe('priceFor', () => {
     expect(priceFor('claude-opus-5-20260514')).toBe(MODEL_PRICES.opus);
   });
 
+  it('prices Fable 5.1 and Fable 5 at the fable row, not the fallback', () => {
+    expect(priceFor('claude-fable-5-1')).toBe(MODEL_PRICES.fable);
+    expect(priceFor('claude-fable-5-1[1m]')).toBe(MODEL_PRICES.fable);
+    expect(priceFor('claude-fable-5')).toBe(MODEL_PRICES.fable);
+  });
+
   it('prices Sonnet 5.5 apart from the rest of the sonnet family', () => {
     expect(priceFor('claude-sonnet-5-5')).toBe(MODEL_PRICES['sonnet-5-5']);
     expect(priceFor('claude-sonnet-5-5[1m]')).toBe(MODEL_PRICES['sonnet-5-5']);
@@ -41,9 +47,10 @@ describe('priceFor', () => {
 });
 
 describe('MODEL_PRICES', () => {
-  // The one place the sheet's own values are pinned. Opus 5.5, Opus 5, Sonnet 5,
-  // Haiku 4.5 list, $/MTok.
+  // The one place the sheet's own values are pinned. Fable 5.1, Opus 5.5, Opus 5,
+  // Sonnet 5, Haiku 4.5 list, $/MTok.
   it('carries the current generation, not the one before it', () => {
+    expect(MODEL_PRICES.fable).toEqual({ input: 10, output: 50, cacheWrite: 12.5, cacheRead: 0.25 });
     expect(MODEL_PRICES['opus-5-5']).toEqual({ input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2 });
     expect(MODEL_PRICES.opus).toEqual({ input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 });
     expect(MODEL_PRICES['sonnet-5-5']).toEqual({ input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2 });
@@ -55,8 +62,9 @@ describe('MODEL_PRICES', () => {
   it('keeps cache writes at 1.25x input and cache reads at 0.1x', () => {
     for (const [family, p] of Object.entries(MODEL_PRICES)) {
       expect(p.cacheWrite / p.input, `${family} cacheWrite`).toBeCloseTo(1.25, 10);
-      // Opus 5.5's published cache read is 0.05x input, the one row off the shape.
-      const readRatio = family === 'opus-5-5' ? 0.05 : 0.1;
+      // Opus 5.5's published cache read is 0.05x input and Fable's 0.025x, the
+      // two rows off the shape.
+      const readRatio = family === 'opus-5-5' ? 0.05 : family === 'fable' ? 0.025 : 0.1;
       expect(p.cacheRead / p.input, `${family} cacheRead`).toBeCloseTo(readRatio, 10);
     }
   });
