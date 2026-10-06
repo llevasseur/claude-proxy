@@ -959,16 +959,11 @@ CREATE INDEX IF NOT EXISTS jev_call_status_idx     ON jev_call(status, answer_co
  * `my-command-tools rules fire` write beside `CLAUDE_PROXY_STORE`. See
  * `ingest-rule-fires.ts`.
  *
- * **`byte_offset` is the key**: the byte position of the line's start in the file.
- * The record has no id of its own and two fires of one rule in one second are
- * two rows, so a line's position is its identity. That is also what makes a
- * re-run safe twice over: the `file_watermark` row stops a pass re-reading
- * consumed bytes, and a pass that does re-read them — after a watermark clear —
- * upserts onto the same keys instead of adding rows.
+ * **`byte_offset` is the key**: the byte position of the line's start. The record
+ * has no id, and two identical fires are two rows, so position is identity — a
+ * pass that re-reads consumed bytes upserts rather than adding rows.
  *
- * `model` is nullable because a gate reads it off the tail of a transcript and
- * that can come back empty. Ingest fills a null one from `session.model`, so a
- * null left here means no session row has named a model for that run yet.
+ * A null `model` left after ingest means no session row has named one yet.
  * `suggestion`, `bucket` and `thread_id` are set only on a `/judge` fire.
  *
  * New at this step, so no watermark exists to clear.

@@ -10,13 +10,7 @@ import { type JsonInput, jsonField, jsonNumber, jsonString, numberField, parseJs
  * append a row the first time each one refuses a call, and `/judge` appends one
  * through `my-command-tools rules fire` for a confirmed suggestion that shows a
  * prose rule being broken. Both write to `dirname($CLAUDE_PROXY_STORE)`, which is
- * this `logDir`. One line is
- *
- * ```
- * {"v":1,"rule":"gate/sleep","at":"…","model":"claude-…","session":"…","origin":"hook"}
- * ```
- *
- * with `suggestion`, `bucket` and `thread` added on a `/judge` fire.
+ * this `logDir`. A `/judge` fire also carries `suggestion`, `bucket` and `thread`.
  *
  * - **The watermark is a byte offset.** The file is append-only, so a pass reads
  *   only the bytes past the `file_watermark` row's `bytes` and never re-parses
