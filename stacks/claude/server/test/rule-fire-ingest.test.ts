@@ -17,7 +17,20 @@ import { openDb } from '../src/db/open.js';
 /** One row as SQLite hands it back. */
 type DbRow = Record<string, string | number | null>;
 
-const gateFire = {
+/** One line of `rule-fires.jsonl`, as MyCommand's `recordFire` writes it. */
+interface FireFixture {
+  v: number;
+  rule: string;
+  at: string;
+  model: string | null;
+  session: string;
+  origin: string;
+  suggestion?: string;
+  bucket?: string;
+  thread?: string;
+}
+
+const gateFire: FireFixture = {
   v: 1,
   rule: 'gate/sleep',
   at: '2026-10-06T12:00:00.000Z',
@@ -26,7 +39,7 @@ const gateFire = {
   origin: 'hook',
 };
 
-const judgeFire = {
+const judgeFire: FireFixture = {
   v: 1,
   rule: 'prose/batched-discovery',
   at: '2026-10-06T12:05:00.000Z',
@@ -38,7 +51,7 @@ const judgeFire = {
   thread: 'thread-b-child',
 };
 
-const line = (row: object): string => `${JSON.stringify(row)}\n`;
+const line = (row: FireFixture): string => `${JSON.stringify(row)}\n`;
 
 let logDir: string;
 let store: string;
