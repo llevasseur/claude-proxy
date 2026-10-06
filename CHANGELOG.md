@@ -12,6 +12,8 @@ This project has not cut a release yet, so everything below sits under
 
 ### Added
 
+- **MyCommand's rule fires land in a `rule_fire` table.** Ingest reads `logs/rule-fires.jsonl` from a byte watermark and keys each row on its line's offset, so a re-run never counts a fire twice. A fire with no model takes its session row's model, preferring the thread it names. See [`ingest-rule-fires.ts`](stacks/claude/server/src/db/ingest-rule-fires.ts).
+
 - **The Context size thread page shows what the thread cost.** A Cost tile and a per-model table split the total into input, output, cache write and cache read. Each request is priced at its own model's rates through the same `estimateCost` the Dashboard and Trends sum.
 
 ### Changed

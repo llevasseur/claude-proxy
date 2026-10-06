@@ -35,7 +35,7 @@ export function resolveDbPath(logDir: string): string {
  * Schema version, tracked in `PRAGMA user_version`. Bump it and add a migration
  * step below when the shape changes, so an existing file survives a `git pull`.
  */
-export const SCHEMA_VERSION = 23;
+export const SCHEMA_VERSION = 24;
 
 /**
  * Slice 1 — audit rows only. The `.md` and `.request.txt` bodies stay on disk;
@@ -953,6 +953,44 @@ CREATE INDEX IF NOT EXISTS jev_call_started_at_idx ON jev_call(started_at);
 CREATE INDEX IF NOT EXISTS jev_call_status_idx     ON jev_call(status, answer_count);
 `;
 
+/**
+ * Rule fires — one row per line of `<logDir>/rule-fires.jsonl`, the append-only
+ * record the sibling `my-command` repository's workflow gates and
+ * `my-command-tools rules fire` write beside `CLAUDE_PROXY_STORE`. See
+ * `ingest-rule-fires.ts`.
+ *
+ * **`byte_offset` is the key**: the byte position of the line's start in the file.
+ * The record has no id of its own and two fires of one rule in one second are
+ * two rows, so a line's position is its identity. That is also what makes a
+ * re-run safe twice over: the `file_watermark` row stops a pass re-reading
+ * consumed bytes, and a pass that does re-read them — after a watermark clear —
+ * upserts onto the same keys instead of adding rows.
+ *
+ * `model` is nullable because a gate reads it off the tail of a transcript and
+ * that can come back empty. Ingest fills a null one from `session.model`, so a
+ * null left here means no session row has named a model for that run yet.
+ * `suggestion`, `bucket` and `thread_id` are set only on a `/judge` fire.
+ *
+ * New at this step, so no watermark exists to clear.
+ */
+const SCHEMA_V24 = `
+CREATE TABLE IF NOT EXISTS rule_fire (
+  byte_offset INTEGER PRIMARY KEY,
+  rule       TEXT NOT NULL,
+  at         TEXT NOT NULL,
+  model      TEXT,
+  session_id TEXT,
+  -- 'hook' for a gate's first refusal, 'judge' for a confirmed suggestion.
+  origin     TEXT NOT NULL,
+  suggestion TEXT,
+  bucket     TEXT,
+  thread_id  TEXT
+);
+
+CREATE INDEX IF NOT EXISTS rule_fire_rule_at_idx ON rule_fire(rule, at);
+CREATE INDEX IF NOT EXISTS rule_fire_session_idx ON rule_fire(session_id);
+`;
+
 const SCHEMA_V4 = `
 DROP TABLE IF EXISTS command_run_pattern;
 DROP TABLE IF EXISTS command_run_step;
@@ -1118,6 +1156,7 @@ function migrate(db: DatabaseSync): void {
   if (from < 21) db.exec(SCHEMA_V21);
   if (from < 22) db.exec(SCHEMA_V22);
   if (from < 23) db.exec(SCHEMA_V23);
+  if (from < 24) db.exec(SCHEMA_V24);
 
   // `PRAGMA user_version` takes no bind parameters, hence the interpolation.
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
