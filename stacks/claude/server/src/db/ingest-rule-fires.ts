@@ -138,17 +138,23 @@ async function readRange(file: string, start: number, end: number): Promise<Buff
  * Give each null model the one its session row names. A fire carrying a thread
  * id prefers that thread's row, since a subagent can run on another model than
  * its root; otherwise the session's root row, then its most recent one.
+ *
+ * The outer row is referenced only in each subquery's WHERE: SQLite before
+ * 3.53 cannot resolve the UPDATE target from a correlated ORDER BY.
  */
 function fillModels(db: DatabaseSync): number {
   const before = countRows(db, 'WHERE model IS NULL');
   if (before === 0) return 0;
   db.prepare(`
-    UPDATE rule_fire SET model = (
-      SELECT s.model FROM session s
-      WHERE s.model IS NOT NULL
-        AND (s.session_id = rule_fire.session_id OR s.thread_id = rule_fire.thread_id)
-      ORDER BY s.thread_id IS rule_fire.thread_id DESC, s.parent_thread_id IS NULL DESC, s.started DESC
-      LIMIT 1
+    UPDATE rule_fire SET model = COALESCE(
+      (SELECT s.model FROM session s
+        WHERE s.model IS NOT NULL AND s.thread_id = rule_fire.thread_id
+        ORDER BY s.parent_thread_id IS NULL DESC, s.started DESC
+        LIMIT 1),
+      (SELECT s.model FROM session s
+        WHERE s.model IS NOT NULL AND s.session_id = rule_fire.session_id
+        ORDER BY s.parent_thread_id IS NULL DESC, s.started DESC
+        LIMIT 1)
     )
     WHERE model IS NULL AND (session_id IS NOT NULL OR thread_id IS NOT NULL)
   `).run();
