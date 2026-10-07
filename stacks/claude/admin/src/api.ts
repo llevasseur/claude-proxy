@@ -764,6 +764,73 @@ export interface JevCallsResponse {
     substrate: boolean;
   };
 }
+
+/** Which arm of an `/ab` trial. */
+export type AbSide = 'a' | 'b';
+/** What the judge, or the person, can answer: one arm, or neither. */
+export type AbChoice = AbSide | 'tie';
+
+/** One `/ab` trial as the list renders it. */
+export interface AbTrialRow {
+  session: string;
+  id: number;
+  recordedAt: string;
+  /** Without its leading slash. */
+  command: string;
+  args: string | null;
+  mode: string | null;
+  /** The scenario's name, or the fixture branch. */
+  setup: string | null;
+  verdict: AbChoice | null;
+  confidence: string | null;
+  pick: AbChoice | null;
+  /** Null when there is no pick, or no verdict, to compare. */
+  agrees: boolean | null;
+  runs: Record<AbSide, { tokens: number | null; durationMs: number | null; toolUses: number | null }>;
+}
+export interface AbCommandTally {
+  command: string;
+  trials: number;
+  picked: number;
+  agreed: number;
+}
+export interface AbTrialsResponse {
+  /** Newest first. */
+  trials: AbTrialRow[];
+  /** Most recently trialled command first. */
+  commands: AbCommandTally[];
+  meta: { substrate: boolean };
+}
+export interface AbRun {
+  /** The arm's final message, in full. */
+  output: string | null;
+  title: string | null;
+  toolUses: number | null;
+  tokens: number | null;
+  durationMs: number | null;
+  refusals: number | null;
+  refusalLines: string[];
+  close: string | null;
+  closeReason: string | null;
+  skipped: string[];
+  prAction: string | null;
+  prs: string[];
+  diff: string | null;
+}
+export interface AbTrialResponse {
+  trial: AbTrialRow;
+  fixture: { branch: string | null; sha: string | null } | null;
+  scenario: string | null;
+  rubric: string | null;
+  versions: Record<AbSide, { ref: string | null; lines: number | null }>;
+  runs: Record<AbSide, AbRun>;
+  judge: { shownFirst: AbSide | null; verdict: AbChoice | null; confidence: string | null; reasons: string[] };
+  pickBy: string | null;
+  file: string;
+}
+export interface AbTrialDeleteResponse {
+  deleted: { session: string; id: number; command: string; file: string; removedRun: boolean };
+}
 /** One run as the command page lists it — no per-turn series, no per-step breakdown. */
 export interface CommandRunListItem {
   /** A thread id for a top-level run, `<threadId>~<node>` for one nested inside another. */
@@ -1155,6 +1222,8 @@ interface ApiGetResponses extends Record<ApiJsonGetPath, unknown> {
   '/api/concepts/search': ConceptSearchResponse;
   '/api/ideas': IdeasResponse;
   '/api/jev-calls': JevCallsResponse;
+  '/api/ab-trials': AbTrialsResponse;
+  '/api/ab-trials/trial': AbTrialResponse;
   '/api/chat/config': ChatConfigResponse;
   '/api/chat/running': RunningChatsResponse;
   '/api/chat/thread': ChatThreadResponse;
@@ -1178,6 +1247,7 @@ interface ApiGetResponses extends Record<ApiJsonGetPath, unknown> {
  */
 interface ApiPostResponses extends Record<ApiWritePath, unknown> {
   '/api/jobs/delete': JobDeleteResponse;
+  '/api/ab-trials/delete': AbTrialDeleteResponse;
   '/api/sessions/suggestions/status': SuggestionStatusUpdateResponse;
   '/api/main-history/slide': MainSlideResponse;
   '/api/main-history/sync-local': MainSyncResponse;
@@ -1368,6 +1438,12 @@ export const getIdeas = () => read('/api/ideas');
  * much it is not showing.
  */
 export const getJevCalls = (filter: JevCallFilter = 'all', limit?: number) => read('/api/jev-calls', { filter, limit });
+/** Every ingested `/ab` trial, newest first. The page groups and filters by command itself. */
+export const getAbTrials = () => read('/api/ab-trials');
+/** One trial in full — both outputs come from its record in the keep, not the database. */
+export const getAbTrial = (session: string, id: number) => read('/api/ab-trials/trial', { session, id });
+/** Remove one trial's label record from the keep, and its row. */
+export const deleteAbTrial = (session: string, id: number) => write('/api/ab-trials/delete', { session, id });
 /**
  * Adjudicate ideas. The browser may set `accepted`, `rejected`, `proposed` (the
  * undo) and `shipped`; only `claimed` stays off, since a claim names a holder and

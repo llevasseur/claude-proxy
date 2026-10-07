@@ -67,6 +67,8 @@ export interface IngestStats {
   jevSessions: number;
   /** Recorded Jev calls the table holds. */
   jevCalls: number;
+  /** `/ab` trials the keep's label records hold. */
+  abTrials: number;
   /** Jev records parsed this pass — new, or changed since their watermark. */
   jevParsed: number;
   /** Jev records skipped this pass because their format version is not one this reader knows. */
@@ -95,6 +97,7 @@ function emptyStats(): IngestStats {
     conceptsParsed: false,
     jevSessions: 0,
     jevCalls: 0,
+    abTrials: 0,
     jevParsed: 0,
     jevSkipped: 0,
     ruleFires: 0,
@@ -598,6 +601,7 @@ export async function ingest(db: DatabaseSync, logDir: string): Promise<IngestSt
   const jev = await ingestJevCalls(db);
   stats.jevSessions = jev.sessions;
   stats.jevCalls = jev.calls;
+  stats.abTrials = jev.trials;
   stats.jevParsed = jev.parsed;
   stats.jevSkipped = jev.skipped;
   stats.deleted += jev.deleted;

@@ -214,6 +214,29 @@ const abLabel = {
   trial: 1,
 };
 
+/** A real `/ab` trial label, as `my-command-tools jev-record label` writes it. */
+const abTrialLabel = {
+  v: 1,
+  id: 2,
+  session: SESSION,
+  kind: 'ab',
+  recordedAt: '2026-09-17T14:36:00.000Z',
+  trial: {
+    command: 'pr',
+    args: '',
+    fixture: { branch: 'chore/pr-minimal', sha: '99d5556' },
+    rubric: 'Which PR body would a reviewer rather read?',
+    versions: { a: { ref: 'origin/main:src/commands/pr.md', lines: 150 }, b: { ref: 'b.md', lines: 13 } },
+    runs: {
+      a: { output: `## A\n\n${SECRET}`, tokens: 58841, durationMs: 70467, toolUses: 14 },
+      b: { output: '## B', tokens: 53817, durationMs: 41986, toolUses: 11 },
+    },
+    judge: { shownFirst: 'a', verdict: 'b', confidence: 'low', reasons: ['B is tighter.'] },
+    pick: 'b',
+  },
+  label: { pick: 'b', by: 'human', agreesWithJudge: true },
+};
+
 let logDir: string;
 let keep: string;
 let db: DatabaseSync;
@@ -418,6 +441,49 @@ describe('ingestJevCalls', () => {
     expect(await ingestJevCalls(db, keep)).toMatchObject({ calls: 1, parsed: 1, skipped: 1 });
     expect(callRow(2)).toBeUndefined();
     expect(callRow(1)).toMatchObject({ status: 200 });
+  });
+
+  it('writes an `/ab` trial label to `ab_trial`, never to `jev_call`', async () => {
+    await writeRun(SESSION, sessionRecord, [answered]);
+    await writeFile(path.join(keep, SESSION, '000002.json'), JSON.stringify(abTrialLabel, null, 2), 'utf8');
+
+    expect(await ingestJevCalls(db, keep)).toMatchObject({ calls: 1, trials: 1, parsed: 2, skipped: 0 });
+    expect(callRow(2)).toBeUndefined();
+    // SAFETY: `(session, id)` is the primary key, and every column is TEXT or INTEGER.
+    const trial = db.prepare('SELECT * FROM ab_trial WHERE session = ? AND id = 2').get(SESSION) as DbRow;
+    expect(trial).toMatchObject({
+      command: 'pr',
+      args: null,
+      setup: 'chore/pr-minimal',
+      verdict: 'b',
+      confidence: 'low',
+      pick: 'b',
+      a_tokens: 58841,
+      b_duration_ms: 41986,
+    });
+    // An arm's output stays in the record.
+    expect(JSON.stringify(trial)).not.toContain(SECRET);
+  });
+
+  it('re-reads labels skipped before schema 27 so they land in `ab_trial`', async () => {
+    await writeRun(SESSION, sessionRecord, [answered]);
+    await writeFile(path.join(keep, SESSION, '000002.json'), JSON.stringify(abTrialLabel, null, 2), 'utf8');
+    await ingestJevCalls(db, keep);
+    db.exec('DELETE FROM ab_trial');
+    db.exec('PRAGMA user_version = 26');
+    db.close();
+
+    db = openDb(logDir);
+    expect(await ingestJevCalls(db, keep)).toMatchObject({ trials: 1 });
+  });
+
+  it('drops a trial row once its label leaves the keep', async () => {
+    await writeRun(SESSION, sessionRecord, [answered]);
+    await writeFile(path.join(keep, SESSION, '000002.json'), JSON.stringify(abTrialLabel, null, 2), 'utf8');
+    await ingestJevCalls(db, keep);
+
+    await rm(path.join(keep, SESSION, '000002.json'));
+    expect(await ingestJevCalls(db, keep)).toMatchObject({ calls: 1, trials: 0, deleted: 1 });
   });
 
   it('skips a whole run whose `session.json` is a version it does not know', async () => {
