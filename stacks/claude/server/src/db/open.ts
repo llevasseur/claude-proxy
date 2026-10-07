@@ -35,7 +35,7 @@ export function resolveDbPath(logDir: string): string {
  * Schema version, tracked in `PRAGMA user_version`. Bump it and add a migration
  * step below when the shape changes, so an existing file survives a `git pull`.
  */
-export const SCHEMA_VERSION = 23;
+export const SCHEMA_VERSION = 24;
 
 /**
  * Slice 1 — audit rows only. The `.md` and `.request.txt` bodies stay on disk;
@@ -953,6 +953,17 @@ CREATE INDEX IF NOT EXISTS jev_call_started_at_idx ON jev_call(started_at);
 CREATE INDEX IF NOT EXISTS jev_call_status_idx     ON jev_call(status, answer_count);
 `;
 
+/**
+ * Clears the `jev/%` watermarks so rows ingested with an empty `started_at`, before
+ * the `recordedAt` fallback, are re-derived. A no-op without `file_watermark`.
+ */
+function schemaV24(db: DatabaseSync): void {
+  const hasWatermarks = db
+    .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'file_watermark'")
+    .get();
+  if (hasWatermarks) db.exec("DELETE FROM file_watermark WHERE path LIKE 'jev/%'");
+}
+
 const SCHEMA_V4 = `
 DROP TABLE IF EXISTS command_run_pattern;
 DROP TABLE IF EXISTS command_run_step;
@@ -1118,6 +1129,7 @@ function migrate(db: DatabaseSync): void {
   if (from < 21) db.exec(SCHEMA_V21);
   if (from < 22) db.exec(SCHEMA_V22);
   if (from < 23) db.exec(SCHEMA_V23);
+  if (from < 24) schemaV24(db);
 
   // `PRAGMA user_version` takes no bind parameters, hence the interpolation.
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);

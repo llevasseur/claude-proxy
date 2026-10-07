@@ -347,6 +347,31 @@ describe('ingestJevCalls', () => {
     expect(dumped).not.toContain('<redacted>');
   });
 
+  it('times a record with no `startedAt` by its `recordedAt`', async () => {
+    await writeRun(SESSION, sessionRecord, []);
+    const { startedAt: _, ...rest } = transportFailure;
+    await writeFile(
+      path.join(keep, SESSION, '000004.json'),
+      JSON.stringify({ ...rest, recordedAt: '2026-09-17T14:34:00.000Z' }, null, 2),
+      'utf8',
+    );
+    await ingestJevCalls(db, keep);
+
+    expect(callRow(4)).toMatchObject({ started_at: '2026-09-17T14:34:00.000Z' });
+  });
+
+  it('re-derives rows ingested before schema 24, whose watermark would otherwise hide them', async () => {
+    await writeRun(SESSION, sessionRecord, [answered]);
+    await ingestJevCalls(db, keep);
+    db.prepare("UPDATE jev_call SET started_at = '' WHERE session = ?").run(SESSION);
+    db.exec('PRAGMA user_version = 23');
+    db.close();
+
+    db = openDb(logDir);
+    expect(await ingestJevCalls(db, keep)).toMatchObject({ parsed: 1 });
+    expect(callRow(1)).toMatchObject({ started_at: answered.startedAt });
+  });
+
   it('skips a record whose format version it does not know, and counts it', async () => {
     await writeRun(SESSION, sessionRecord, [answered, { ...partial, v: 2 }]);
 
