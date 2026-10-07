@@ -70,9 +70,12 @@ Which name each one reads, and where the default is written:
 | ox server | `OX_SERVER_PORT` | `SERVER_PORT` | `stacks/ox-alpha/server/src/config.ts` |
 | net server | `NET_SERVER_PORT` | `PORT` | `stacks/net/packages/server/src/config.ts` |
 
-The three admin ports are Vite's, set in each stack's `vite.config.ts`: claude pins
-`5173` with `strictPort`, so it refuses to drift and fails loudly instead; codex sets
-`5173`; ox sets nothing and takes Vite's own default, which is `5173` too.
+The three admin ports are Vite's, set in each stack's `vite.config.ts`: claude reads
+`ADMIN_PORT` from its admin `.env` or the environment, falls back to `5173`, and keeps
+`strictPort`, so it refuses to drift and fails loudly instead; codex sets `5173`; ox sets
+nothing and takes Vite's own default, which is `5173` too. Moving claude's admin off
+`5173` also means setting the server's `CHAT_ALLOWED_ORIGINS` to the new origin, or every
+chat POST answers 403.
 
 net's server reads one more name: `NET_ALLOWED_ORIGINS`, a comma-separated list of
 origins allowed to `PUT /api/config`, defaulting to

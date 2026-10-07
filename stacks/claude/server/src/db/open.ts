@@ -35,7 +35,7 @@ export function resolveDbPath(logDir: string): string {
  * Schema version, tracked in `PRAGMA user_version`. Bump it and add a migration
  * step below when the shape changes, so an existing file survives a `git pull`.
  */
-export const SCHEMA_VERSION = 25;
+export const SCHEMA_VERSION = 26;
 
 /**
  * Slice 1 — audit rows only. The `.md` and `.request.txt` bodies stay on disk;
@@ -973,10 +973,43 @@ function schemaV24(db: DatabaseSync): void {
 }
 
 /**
+ * Rule fires — one row per line of `<logDir>/rule-fires.jsonl`, the append-only
+ * record the sibling `my-command` repository's workflow gates and
+ * `my-command-tools rules fire` write beside `CLAUDE_PROXY_STORE`. See
+ * `ingest-rule-fires.ts`.
+ *
+ * **`byte_offset` is the key**: the byte position of the line's start. The record
+ * has no id, and two identical fires are two rows, so position is identity — a
+ * pass that re-reads consumed bytes upserts rather than adding rows.
+ *
+ * A null `model` left after ingest means no session row has named one yet.
+ * `suggestion`, `bucket` and `thread_id` are set only on a `/judge` fire.
+ *
+ * New at this step, so no watermark exists to clear.
+ */
+const SCHEMA_V25 = `
+CREATE TABLE IF NOT EXISTS rule_fire (
+  byte_offset INTEGER PRIMARY KEY,
+  rule       TEXT NOT NULL,
+  at         TEXT NOT NULL,
+  model      TEXT,
+  session_id TEXT,
+  -- 'hook' for a gate's first refusal, 'judge' for a confirmed suggestion.
+  origin     TEXT NOT NULL,
+  suggestion TEXT,
+  bucket     TEXT,
+  thread_id  TEXT
+);
+
+CREATE INDEX IF NOT EXISTS rule_fire_rule_at_idx ON rule_fire(rule, at);
+CREATE INDEX IF NOT EXISTS rule_fire_session_idx ON rule_fire(session_id);
+`;
+
+/**
  * Re-derives the keep so rows written for records that are not HTTP exchanges,
  * such as `/ab` trial labels, are dropped rather than shown as failed calls.
  */
-function schemaV25(db: DatabaseSync): void {
+function schemaV26(db: DatabaseSync): void {
   clearJevWatermarks(db);
 }
 
@@ -1146,7 +1179,8 @@ function migrate(db: DatabaseSync): void {
   if (from < 22) db.exec(SCHEMA_V22);
   if (from < 23) db.exec(SCHEMA_V23);
   if (from < 24) schemaV24(db);
-  if (from < 25) schemaV25(db);
+  if (from < 25) db.exec(SCHEMA_V25);
+  if (from < 26) schemaV26(db);
 
   // `PRAGMA user_version` takes no bind parameters, hence the interpolation.
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);

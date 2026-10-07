@@ -19,6 +19,7 @@ import { resolveSessionsDir } from '../sessions.js';
 import { ingestCommandRuns } from './ingest-commands.js';
 import { ingestConcepts } from './ingest-concepts.js';
 import { ingestJevCalls } from './ingest-jev.js';
+import { ingestRuleFires } from './ingest-rule-fires.js';
 import { ingestSessions } from './ingest-sessions.js';
 
 /**
@@ -70,6 +71,12 @@ export interface IngestStats {
   jevParsed: number;
   /** Jev records skipped this pass because their format version is not one this reader knows. */
   jevSkipped: number;
+  /** Rule fires `logs/rule-fires.jsonl` holds. */
+  ruleFires: number;
+  /** Rule-fire lines read this pass — only the bytes past the watermark. */
+  ruleFiresParsed: number;
+  /** Null rule-fire models this pass filled from `session.model`. */
+  ruleFiresFilled: number;
 }
 
 function emptyStats(): IngestStats {
@@ -90,6 +97,9 @@ function emptyStats(): IngestStats {
     jevCalls: 0,
     jevParsed: 0,
     jevSkipped: 0,
+    ruleFires: 0,
+    ruleFiresParsed: 0,
+    ruleFiresFilled: 0,
   };
 }
 
@@ -591,6 +601,14 @@ export async function ingest(db: DatabaseSync, logDir: string): Promise<IngestSt
   stats.jevParsed = jev.parsed;
   stats.jevSkipped = jev.skipped;
   stats.deleted += jev.deleted;
+
+  // After the transcripts, so a fire's null model can be filled from a session
+  // row this same pass wrote. Its watermark is a byte offset into the file.
+  const fires = await ingestRuleFires(db, logDir);
+  stats.ruleFires = fires.fires;
+  stats.ruleFiresParsed = fires.parsed;
+  stats.ruleFiresFilled = fires.filled;
+  stats.deleted += fires.deleted;
   return stats;
 }
 

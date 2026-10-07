@@ -400,7 +400,7 @@ describe('ingestJevCalls', () => {
     expect(await ingestJevCalls(db, keep)).toMatchObject({ calls: 1, parsed: 0, skipped: 0 });
   });
 
-  it('drops a non-call row ingested before schema 25 once the keep is re-derived', async () => {
+  it('drops a non-call row ingested before schema 26 once the keep is re-derived', async () => {
     await writeRun(SESSION, sessionRecord, [answered]);
     await writeFile(path.join(keep, SESSION, '000002.json'), JSON.stringify(abLabel, null, 2), 'utf8');
     await ingestJevCalls(db, keep);
@@ -410,7 +410,7 @@ describe('ingestJevCalls', () => {
          ok, response_bytes, answer_count, answered_ids, unanswered_ids)
        VALUES (?, 2, 1, ?, 0, 0, '[]', 0, 0, 0, '[]', '[]')`,
     ).run(SESSION, abLabel.recordedAt);
-    db.exec('PRAGMA user_version = 24');
+    db.exec('PRAGMA user_version = 25');
     db.close();
 
     db = openDb(logDir);

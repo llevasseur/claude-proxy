@@ -10,6 +10,11 @@ This project has not cut a release yet, so everything below sits under
 
 ## [Unreleased]
 
+### Added
+
+- **MyCommand's rule fires land in a `rule_fire` table.** Ingest reads `logs/rule-fires.jsonl` from a byte watermark and keys each row on its line's offset, so a re-run never counts a fire twice. A fire with no model takes its session row's model, preferring the thread it names. See [`ingest-rule-fires.ts`](stacks/claude/server/src/db/ingest-rule-fires.ts).
+- **claude's admin dev server can run on a port other than 5173.** Set `ADMIN_PORT` in `stacks/claude/admin/.env` and Vite binds there, still with `strictPort`. The default stays 5173, and a new port needs a matching `CHAT_ALLOWED_ORIGINS` on the server or chat POSTs answer 403.
+
 ### Fixed
 
 - **The Jev calls page no longer counts `/ab` trial labels as failed calls.** The recording keep also holds label records that are not HTTP exchanges, and each one showed up as a failure with no status, inflating the Failed count. Ingest now skips them, and rows already written for them are dropped on the next server start.
