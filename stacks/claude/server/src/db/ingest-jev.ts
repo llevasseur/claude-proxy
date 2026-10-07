@@ -2,6 +2,7 @@ import { readdir, readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
+import { type AbTrial, readAbTrial, trialSetup } from '../ab-trial-record.js';
 import {
   type JsonInput,
   type JsonObject,
@@ -46,10 +47,11 @@ import {
  *   re-read every pass; the schema step that teaches this file a new version
  *   clears `jev/%` from `file_watermark` and the whole keep is re-derived, the way
  *   `CONCEPT_DETAIL` does it.
- * - **A record that is not an HTTP exchange is skipped too.** The keep also holds
- *   v1 records numbered like calls with no `request`, such as `/ab` trial labels,
- *   which as a call would read as a failure with no status. It is counted like an
- *   unknown `v`, and a row an earlier pass wrote for it is dropped.
+ * - **A record that is not an HTTP exchange never becomes a call.** The keep also
+ *   holds v1 records numbered like calls with no `request`, which as a call would
+ *   read as a failure with no status, and a row an earlier pass wrote for one in
+ *   `jev_call` is dropped. An `/ab` trial label (`kind: "ab"`) goes to `ab_trial`
+ *   instead and counts as parsed; anything else is counted like an unknown `v`.
  */
 
 /** The record format this file understands. Anything else is skipped. */
@@ -77,6 +79,8 @@ export interface JevIngestStats {
   sessions: number;
   /** Call rows the table holds once this pass is done. */
   calls: number;
+  /** `/ab` trial rows `ab_trial` holds once this pass is done. */
+  trials: number;
   /** Records parsed this pass — new, or changed since their watermark was written. */
   parsed: number;
   /**
@@ -90,14 +94,16 @@ export interface JevIngestStats {
 }
 
 function emptyJevStats(): JevIngestStats {
-  return { sessions: 0, calls: 0, parsed: 0, skipped: 0, deleted: 0 };
+  return { sessions: 0, calls: 0, trials: 0, parsed: 0, skipped: 0, deleted: 0 };
 }
 
 interface JevStatements {
   insertSession: ReturnType<DatabaseSync['prepare']>;
   insertCall: ReturnType<DatabaseSync['prepare']>;
+  insertTrial: ReturnType<DatabaseSync['prepare']>;
   deleteSession: ReturnType<DatabaseSync['prepare']>;
   deleteCall: ReturnType<DatabaseSync['prepare']>;
+  deleteTrial: ReturnType<DatabaseSync['prepare']>;
   watermark: ReturnType<DatabaseSync['prepare']>;
   dropWatermark: ReturnType<DatabaseSync['prepare']>;
 }
@@ -141,8 +147,23 @@ function prepare(db: DatabaseSync): JevStatements {
         usage_output_tokens = excluded.usage_output_tokens,
         error_name = excluded.error_name, error_message = excluded.error_message
     `),
+    // Upsert for the same reason as a call: a label is rewritten when its pick is recorded.
+    insertTrial: db.prepare(`
+      INSERT INTO ab_trial (
+        session, id, recorded_at, command, args, mode, setup, verdict, confidence, pick,
+        a_tokens, b_tokens, a_duration_ms, b_duration_ms, a_tool_uses, b_tool_uses
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(session, id) DO UPDATE SET
+        recorded_at = excluded.recorded_at, command = excluded.command, args = excluded.args,
+        mode = excluded.mode, setup = excluded.setup, verdict = excluded.verdict,
+        confidence = excluded.confidence, pick = excluded.pick,
+        a_tokens = excluded.a_tokens, b_tokens = excluded.b_tokens,
+        a_duration_ms = excluded.a_duration_ms, b_duration_ms = excluded.b_duration_ms,
+        a_tool_uses = excluded.a_tool_uses, b_tool_uses = excluded.b_tool_uses
+    `),
     deleteSession: db.prepare('DELETE FROM jev_session WHERE session = ?'),
     deleteCall: db.prepare('DELETE FROM jev_call WHERE session = ? AND id = ?'),
+    deleteTrial: db.prepare('DELETE FROM ab_trial WHERE session = ? AND id = ?'),
     watermark: db.prepare(`
       INSERT INTO file_watermark (path, bytes, modified, scanned_at) VALUES (?, ?, ?, ?)
       ON CONFLICT(path) DO UPDATE SET
@@ -287,7 +308,30 @@ function writeCall(st: JevStatements, session: string, id: number, record: JsonI
   );
 }
 
-/** Every row of the two tables, dropped together — for a keep that is no longer on disk. */
+/** Write one `/ab` trial's row: the list's columns only, never an arm's output. */
+function writeTrial(st: JevStatements, session: string, id: number, trial: AbTrial): void {
+  const { a, b } = trial.runs;
+  st.insertTrial.run(
+    session,
+    id,
+    trial.recordedAt,
+    trial.command,
+    trial.args,
+    trial.mode,
+    trialSetup(trial),
+    trial.judge.verdict,
+    trial.judge.confidence,
+    trial.pick,
+    a.tokens,
+    b.tokens,
+    a.durationMs,
+    b.durationMs,
+    a.toolUses,
+    b.toolUses,
+  );
+}
+
+/** Every row of the keep's tables, dropped together — for a keep that is no longer on disk. */
 function clearKeep(db: DatabaseSync, st: JevStatements): number {
   // SAFETY: this SELECT names exactly `session`, which is what the row type declares.
   const sessions = db.prepare('SELECT session FROM jev_session').all() as Array<{ session: string }>;
@@ -296,10 +340,12 @@ function clearKeep(db: DatabaseSync, st: JevStatements): number {
   return sessions.length;
 }
 
-/** The call ids already stored for one run. */
-function knownCallIds(db: DatabaseSync, session: string): Set<number> {
+/** The record ids already stored for one run, as a call or as a trial. */
+function knownIds(db: DatabaseSync, session: string): Set<number> {
   // SAFETY: this SELECT names exactly `id`, which is what the row type declares.
-  const rows = db.prepare('SELECT id FROM jev_call WHERE session = ?').all(session) as Array<{ id: number }>;
+  const rows = db
+    .prepare('SELECT id FROM jev_call WHERE session = ? UNION SELECT id FROM ab_trial WHERE session = ?')
+    .all(session, session) as Array<{ id: number }>;
   return new Set(rows.map((row) => row.id));
 }
 
@@ -401,16 +447,23 @@ async function ingestSession(
     }
 
     if (!isExchange(record)) {
-      stats.skipped += 1;
+      const trial = readAbTrial(record);
+      const trialId = numberField(record, 'id') ?? nameId;
+      const isTrial = trial !== null && trialId !== null;
+      if (isTrial) present.add(trialId);
       db.exec('BEGIN');
       try {
         if (nameId !== null) st.deleteCall.run(session, nameId);
+        if (isTrial) writeTrial(st, session, trialId, trial);
+        else if (nameId !== null) st.deleteTrial.run(session, nameId);
         st.watermark.run(key, mark.bytes, mark.modified, new Date().toISOString());
         db.exec('COMMIT');
       } catch (err) {
         db.exec('ROLLBACK');
         throw err;
       }
+      if (isTrial) stats.parsed += 1;
+      else stats.skipped += 1;
       continue;
     }
 
@@ -436,12 +489,13 @@ async function ingestSession(
   }
 
   // Rows whose record left the directory — the keep is prunable like any other.
-  const stale = [...knownCallIds(db, session)].filter((id) => !present.has(id));
+  const stale = [...knownIds(db, session)].filter((id) => !present.has(id));
   if (stale.length === 0) return;
   db.exec('BEGIN');
   try {
     for (const id of stale) {
       st.deleteCall.run(session, id);
+      st.deleteTrial.run(session, id);
       st.dropWatermark.run(watermarkKey(session, `${String(id).padStart(6, '0')}.json`));
       stats.deleted += 1;
     }
@@ -517,5 +571,7 @@ export async function ingestJevCalls(db: DatabaseSync, keep = resolveJevRecordDi
   // SAFETY: `count(*)` aliased to `c` is the whole select list, and an aggregate with
   // no GROUP BY always answers exactly one row.
   stats.calls = (db.prepare('SELECT count(*) c FROM jev_call').get() as { c: number }).c;
+  // SAFETY: as above.
+  stats.trials = (db.prepare('SELECT count(*) c FROM ab_trial').get() as { c: number }).c;
   return stats;
 }

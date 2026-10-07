@@ -178,6 +178,13 @@ export const API_ROUTES = [
   // `filter` narrows to the rows worth looking at: the calls that came back short, and the
   // ones that failed outright.
   { path: '/api/jev-calls', methods: ['GET'], kind: 'json', cors: 'open', params: ['limit', 'filter'] },
+  // `/ab` trials, from the label records the same keep holds. The list is grouped and
+  // filtered by command on the page, so it takes no parameters; one trial is keyed by
+  // its record's run and id.
+  { path: '/api/ab-trials', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
+  { path: '/api/ab-trials/trial', methods: ['GET'], kind: 'json', cors: 'open', params: ['session', 'id'] },
+  // Removes the trial's label record from the keep, so it is a write.
+  { path: '/api/ab-trials/delete', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
   { path: '/api/notes', methods: ['GET'], kind: 'json', cors: 'open', params: ['cursor', 'limit', 'archived'] },
   {
     path: '/api/notes/stream',

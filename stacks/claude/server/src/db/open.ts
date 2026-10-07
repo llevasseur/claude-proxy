@@ -35,7 +35,7 @@ export function resolveDbPath(logDir: string): string {
  * Schema version, tracked in `PRAGMA user_version`. Bump it and add a migration
  * step below when the shape changes, so an existing file survives a `git pull`.
  */
-export const SCHEMA_VERSION = 26;
+export const SCHEMA_VERSION = 27;
 
 /**
  * Slice 1 — audit rows only. The `.md` and `.request.txt` bodies stay on disk;
@@ -1013,6 +1013,50 @@ function schemaV26(db: DatabaseSync): void {
   clearJevWatermarks(db);
 }
 
+/**
+ * `/ab` trials — one row per label record `my-command-tools jev-record label` writes
+ * into the Jev keep, the records `jev_call` deliberately skips. See `ingest-jev.ts`.
+ *
+ * **The columns are what the list needs and nothing more.** Each arm's full output,
+ * the rubric and the judge's reasons stay in the record and are read from it per
+ * request by `ab-trials.ts`, so an arm's output — which can quote a prompt or a diff —
+ * never reaches this database.
+ *
+ * `setup` is the scenario's name, or the fixture branch when the trial ran from one.
+ * `verdict` and `pick` are `a`, `b` or `tie`; a null `pick` is a trial nobody picked.
+ *
+ * The step clears `jev/%` so label records the keep already holds, watermarked as
+ * skipped by step 26, are read again and land here.
+ */
+const SCHEMA_V27 = `
+CREATE TABLE IF NOT EXISTS ab_trial (
+  session       TEXT NOT NULL REFERENCES jev_session(session) ON DELETE CASCADE,
+  id            INTEGER NOT NULL,
+  recorded_at   TEXT NOT NULL,
+  command       TEXT NOT NULL,
+  args          TEXT,
+  mode          TEXT,
+  setup         TEXT,
+  verdict       TEXT,
+  confidence    TEXT,
+  pick          TEXT,
+  a_tokens      INTEGER,
+  b_tokens      INTEGER,
+  a_duration_ms INTEGER,
+  b_duration_ms INTEGER,
+  a_tool_uses   INTEGER,
+  b_tool_uses   INTEGER,
+  PRIMARY KEY (session, id)
+);
+
+CREATE INDEX IF NOT EXISTS ab_trial_command_idx ON ab_trial(command, recorded_at);
+`;
+
+function schemaV27(db: DatabaseSync): void {
+  db.exec(SCHEMA_V27);
+  clearJevWatermarks(db);
+}
+
 const SCHEMA_V4 = `
 DROP TABLE IF EXISTS command_run_pattern;
 DROP TABLE IF EXISTS command_run_step;
@@ -1181,6 +1225,7 @@ function migrate(db: DatabaseSync): void {
   if (from < 24) schemaV24(db);
   if (from < 25) db.exec(SCHEMA_V25);
   if (from < 26) schemaV26(db);
+  if (from < 27) schemaV27(db);
 
   // `PRAGMA user_version` takes no bind parameters, hence the interpolation.
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);

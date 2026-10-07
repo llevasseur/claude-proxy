@@ -36,6 +36,7 @@ async function main(): Promise<void> {
   );
   console.log(
     `[ingest] ${stats.jevCalls} jev call${stats.jevCalls === 1 ? '' : 's'}` +
+      ` and ${stats.abTrials} /ab trial${stats.abTrials === 1 ? '' : 's'}` +
       ` across ${stats.jevSessions} recorded run${stats.jevSessions === 1 ? '' : 's'}` +
       `, ${stats.jevParsed} parsed` +
       `, ${stats.jevSkipped} skipped` +

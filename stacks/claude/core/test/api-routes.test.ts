@@ -80,6 +80,8 @@ describe('API_ROUTES', () => {
       '/api/ideas/area',
       '/api/ideas/comment',
       '/api/ideas/claim',
+      // Removes an `/ab` trial's label record from the Jev keep.
+      '/api/ab-trials/delete',
       '/api/notes/create',
       '/api/notes/update',
       '/api/notes/archive',

@@ -29,6 +29,7 @@ import {
   type SuggestionRecurrence,
   type SuggestionStatus,
 } from '@agent-proxy/claude-core';
+import { buildAbTrial, buildAbTrials, deleteAbTrial } from './ab-trials.js';
 import {
   applyIdeaArea,
   applyIdeaClaim,
@@ -116,6 +117,7 @@ import { type ReconcileResult, reconcileCommandRuns, resolveCommandsDir } from '
 import { RemoteConceptStoreError, remoteConceptStore } from './concepts-remote.js';
 import { resolveProxyBaseUrl, resolveServerPort } from './config.js';
 import { memoiseByCorpus } from './corpus-memo.js';
+import { resolveJevRecordDir } from './db/ingest-jev.js';
 import { resolveDbPath } from './db/open.js';
 import { recordRouteObservation } from './db/route-observation-store.js';
 import {
@@ -130,7 +132,7 @@ import { ALL_DAYS, resolveAllDays, type SidecarSource } from './db/source.js';
 import { errorMessage } from './errors.js';
 import { IdeasStoreUnconfiguredError, RemoteIdeasStoreError } from './ideas-remote.js';
 import { resolveJobsDir } from './jobs.js';
-import { type JsonObject, jsonBoolean, jsonObject, jsonString, parseJson } from './json.js';
+import { type JsonObject, jsonBoolean, jsonNumber, jsonObject, jsonString, parseJson } from './json.js';
 import { countSidecarFiles, resolveLogDir, today } from './logs.js';
 import { ERR } from './main-history.js';
 import {
@@ -1670,6 +1672,41 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
       return;
     }
     send(res, 200, buildJevCalls(LOG_DIR, { filter: filter ?? 'all', limit: url.searchParams.get('limit') }));
+  },
+  // `/ab` trials. The list reads `ab_trial`; one trial is read from its record in the
+  // keep, so an arm's output is served without ever having been stored here.
+  '/api/ab-trials': async ({ res }) => {
+    send(res, 200, buildAbTrials(LOG_DIR));
+  },
+  '/api/ab-trials/trial': async ({ res, url }) => {
+    try {
+      const session = url.searchParams.get('session') ?? '';
+      send(res, 200, await buildAbTrial(resolveJevRecordDir(), session, url.searchParams.get('id') ?? ''));
+    } catch (err) {
+      const msg = errorMessage(err);
+      if (msg.startsWith('invalid trial')) send(res, 400, { error: msg });
+      else if (msg.startsWith('trial not found')) send(res, 404, { error: msg });
+      else throw err;
+    }
+  },
+  // Removes the label record from the keep for real. POST only, through the
+  // origin-checked write CORS.
+  '/api/ab-trials/delete': async ({ req, res }) => {
+    await servePost(
+      req,
+      res,
+      async (body) => {
+        const session = jsonString(body.session);
+        const id = jsonNumber(body.id);
+        if (session === undefined || id === undefined) throw new Error('invalid trial: missing session or id');
+        return deleteAbTrial(LOG_DIR, resolveJevRecordDir(), session, id);
+      },
+      (msg) => {
+        if (msg.startsWith('trial not found')) return 404;
+        if (msg.startsWith('invalid trial')) return 400;
+        return 500;
+      },
+    );
   },
   '/api/ideas': (ctx) => serveIdeas(ctx, false),
   '/api/ideas/stream': (ctx) => serveIdeas(ctx, true),
