@@ -250,7 +250,8 @@ function writeCall(st: JevStatements, session: string, id: number, record: JsonI
     session,
     id,
     FORMAT_VERSION,
-    stringField(record, 'startedAt') ?? '',
+    // A record that is not an HTTP exchange carries `recordedAt` instead of `startedAt`.
+    stringField(record, 'startedAt') ?? stringField(record, 'recordedAt') ?? '',
     str(doc?.endedAt),
     num(doc?.durationMs),
     str(doc?.endpoint),

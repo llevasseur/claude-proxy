@@ -123,7 +123,8 @@ rejection claude deliberately does not perform.
 Two collisions are **recorded rather than fixed**, because both predate fusion — running
 these repositories side by side already collided this way: claude's and ox's servers both
 default to `8788`, and all three admin dev servers to `5173`. The scoped names above are
-what makes them overridable without moving a default.
+what makes them overridable without moving a default; claude's admin reads `ADMIN_PORT`,
+which also needs the server's `CHAT_ALLOWED_ORIGINS` moved to match.
 
 ## Toolchain
 
