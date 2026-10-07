@@ -15,7 +15,8 @@
 /* Custom properties, and the single reduced-motion block for the whole sheet. */
 @import "./styles/tokens.css";
 @import "./styles/base.css";
-/* The default scrollbar, site-wide: visible only while its container scrolls. */
+/* The default scrollbar, site-wide: a pill in a translucent channel, brighter
+ * while its container scrolls. */
 @import "./styles/scrollbar.css";
 
 /* The frame: the rail, the workspace it scrolls beside, and the card and grid
