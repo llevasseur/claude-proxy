@@ -53,7 +53,8 @@ export function AbTrialDetailPage() {
         {data && (
           <TrialDelete
             trial={data.trial}
-            onDeleted={() => void navigate({ to: '/ab-trials', search: { command: data.trial.command } })}
+            // The whole list, since this may have been its command's only trial.
+            onDeleted={() => void navigate({ to: '/ab-trials' })}
           />
         )}
       </div>
