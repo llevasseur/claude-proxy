@@ -156,7 +156,7 @@ function Lines({ items }: { items: string[] }) {
   );
 }
 
-/** The metric rows, one function per row so both arms are drawn by the same code. */
+/** The metric rows, each drawn once per arm. */
 const ROWS: readonly { label: string; cell: (run: AbRun, data: AbTrialResponse, side: AbSide) => ReactNode }[] = [
   {
     label: 'Version',
