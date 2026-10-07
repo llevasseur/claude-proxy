@@ -46,6 +46,11 @@ import {
  *   re-read every pass; the schema step that teaches this file a new version
  *   clears `jev/%` from `file_watermark` and the whole keep is re-derived, the way
  *   `CONCEPT_DETAIL` does it.
+ * - **A record that is not an HTTP exchange is skipped too.** The keep also holds
+ *   other v1 records numbered like calls — `/ab` writes trial labels carrying
+ *   `kind`, `recordedAt`, `label` and `trial` with no `request` — and written as a
+ *   call one would read as a failure with no status. It is counted like an unknown
+ *   `v`, and a row an earlier pass wrote for it is dropped.
  */
 
 /** The record format this file understands. Anything else is skipped. */
@@ -76,8 +81,8 @@ export interface JevIngestStats {
   /** Records parsed this pass — new, or changed since their watermark was written. */
   parsed: number;
   /**
-   * Records skipped **this pass** because their `v` is not 1, or because the file
-   * would not parse into a usable record. A skip is not a failure; the count is
+   * Records skipped **this pass** because their `v` is not 1, because they are not
+   * an HTTP exchange, or because the file would not parse into a usable record. A skip is not a failure; the count is
    * how a keep written by a newer proxy makes itself visible.
    */
   skipped: number;
@@ -213,6 +218,11 @@ function isKnownVersion(record: JsonInput): boolean {
   return numberField(record, 'v') === FORMAT_VERSION;
 }
 
+/** True when the record is one HTTP exchange: it carries the `request` every call writes. */
+function isExchange(record: JsonInput): boolean {
+  return objectField(record, 'request') !== undefined;
+}
+
 /** Write one run's `session.json` row. */
 function writeSession(st: JevStatements, session: string, record: JsonInput): void {
   const doc = jsonObject(record);
@@ -250,7 +260,7 @@ function writeCall(st: JevStatements, session: string, id: number, record: JsonI
     session,
     id,
     FORMAT_VERSION,
-    // A record that is not an HTTP exchange carries `recordedAt` instead of `startedAt`.
+    // Some records carry `recordedAt` instead of `startedAt`.
     stringField(record, 'startedAt') ?? stringField(record, 'recordedAt') ?? '',
     str(doc?.endedAt),
     num(doc?.durationMs),
@@ -382,6 +392,20 @@ async function ingestSession(
       stats.skipped += 1;
       db.exec('BEGIN');
       try {
+        st.watermark.run(key, mark.bytes, mark.modified, new Date().toISOString());
+        db.exec('COMMIT');
+      } catch (err) {
+        db.exec('ROLLBACK');
+        throw err;
+      }
+      continue;
+    }
+
+    if (!isExchange(record)) {
+      stats.skipped += 1;
+      db.exec('BEGIN');
+      try {
+        if (nameId !== null) st.deleteCall.run(session, nameId);
         st.watermark.run(key, mark.bytes, mark.modified, new Date().toISOString());
         db.exec('COMMIT');
       } catch (err) {
