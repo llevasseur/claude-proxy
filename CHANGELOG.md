@@ -17,6 +17,7 @@ This project has not cut a release yet, so everything below sits under
 
 ### Fixed
 
+- **The Jev calls page no longer counts `/ab` trial labels as failed calls.** The recording keep also holds label records that are not HTTP exchanges, and each one showed up as a failure with no status, inflating the Failed count. Ingest now skips them, and rows already written for them are dropped on the next server start.
 - **Every row on the Jev calls page now shows when it happened.** A record with no `startedAt`, such as an `/ab` trial label, used to show `—` in the When column. Those rows now take their time from the record's `recordedAt`, and rows already ingested are re-read on the next server start.
 
 ### Added

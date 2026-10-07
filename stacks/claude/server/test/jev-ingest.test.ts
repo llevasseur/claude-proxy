@@ -205,6 +205,15 @@ const transportFailure: CallFixture = {
   },
 };
 
+/** A `/ab` trial label: a v1 record numbered like a call, but no HTTP exchange. */
+const abLabel = {
+  v: 1,
+  kind: 'ab',
+  recordedAt: '2026-09-17T14:35:00.000Z',
+  label: 'B',
+  trial: 1,
+};
+
 let logDir: string;
 let keep: string;
 let db: DatabaseSync;
@@ -378,6 +387,37 @@ describe('ingestJevCalls', () => {
     const stats = await ingestJevCalls(db, keep);
     expect(stats).toMatchObject({ sessions: 1, calls: 1, parsed: 1, skipped: 1 });
     expect(callRow(2)).toBeUndefined();
+  });
+
+  it('skips a record that is not an HTTP exchange, and counts it', async () => {
+    await writeRun(SESSION, sessionRecord, [answered]);
+    await writeFile(path.join(keep, SESSION, '000002.json'), JSON.stringify(abLabel, null, 2), 'utf8');
+
+    expect(await ingestJevCalls(db, keep)).toMatchObject({ sessions: 1, calls: 1, parsed: 1, skipped: 1 });
+    expect(callRow(2)).toBeUndefined();
+
+    // Its watermark is written, so an unchanged label is not re-read and re-counted.
+    expect(await ingestJevCalls(db, keep)).toMatchObject({ calls: 1, parsed: 0, skipped: 0 });
+  });
+
+  it('drops a non-call row ingested before schema 26 once the keep is re-derived', async () => {
+    await writeRun(SESSION, sessionRecord, [answered]);
+    await writeFile(path.join(keep, SESSION, '000002.json'), JSON.stringify(abLabel, null, 2), 'utf8');
+    await ingestJevCalls(db, keep);
+    // What an earlier ingest wrote for the label: no status and no answers, read as a failure.
+    db.prepare(
+      `INSERT INTO jev_call (session, id, v, started_at, request_bytes, question_count, question_ids,
+         ok, response_bytes, answer_count, answered_ids, unanswered_ids)
+       VALUES (?, 2, 1, ?, 0, 0, '[]', 0, 0, 0, '[]', '[]')`,
+    ).run(SESSION, abLabel.recordedAt);
+    db.exec('PRAGMA user_version = 25');
+    db.close();
+
+    db = openDb(logDir);
+    expect(countOf("SELECT count(*) c FROM file_watermark WHERE path LIKE 'jev/%'")).toBe(0);
+    expect(await ingestJevCalls(db, keep)).toMatchObject({ calls: 1, parsed: 1, skipped: 1 });
+    expect(callRow(2)).toBeUndefined();
+    expect(callRow(1)).toMatchObject({ status: 200 });
   });
 
   it('skips a whole run whose `session.json` is a version it does not know', async () => {
