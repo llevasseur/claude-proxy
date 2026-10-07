@@ -1,5 +1,6 @@
 import {
   type JsonInput,
+  jsonArray,
   jsonNumber,
   jsonObject,
   jsonString,
@@ -99,17 +100,12 @@ function num(value: JsonInput): number | null {
  * bare number, a URL string and an object carrying either are all accepted.
  */
 function prs(value: JsonInput): string[] {
-  if (!Array.isArray(value)) return [];
   const out: string[] = [];
-  for (const entry of value) {
-    if (typeof entry === 'string') out.push(entry);
-    else if (typeof entry === 'number') out.push(`#${entry}`);
-    else {
-      const url = stringField(entry, 'url');
-      const number = numberField(entry, 'number');
-      if (url !== undefined) out.push(url);
-      else if (number !== undefined) out.push(`#${number}`);
-    }
+  for (const entry of jsonArray(value) ?? []) {
+    const url = jsonString(entry) ?? stringField(entry, 'url');
+    const number = jsonNumber(entry) ?? numberField(entry, 'number');
+    if (url !== undefined) out.push(url);
+    else if (number !== undefined) out.push(`#${number}`);
   }
   return out;
 }

@@ -65,7 +65,7 @@ async function writeLabel(session: string, opts: LabelOptions): Promise<void> {
       judge: { shownFirst: 'b', verdict: opts.verdict, confidence: 'high', reasons: ['one', 'two'] },
       pick: opts.pick ?? null,
     },
-    ...(opts.pick ? { label: { pick: opts.pick, by: 'human' } } : {}),
+    label: { pick: opts.pick ?? null, by: 'human' },
   };
   await writeFile(path.join(dir, '000001.json'), JSON.stringify(record), 'utf8');
 }

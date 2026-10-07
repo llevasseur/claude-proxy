@@ -203,8 +203,14 @@ export function buildAbTrials(logDir: string): AbTrialsResponse {
 /** A keep directory name: what the recorder writes, and nothing that could leave the keep. */
 const SESSION_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
+/** One trial's key, checked, and the record file it names. */
+interface RecordLocation {
+  id: number;
+  file: string;
+}
+
 /** Where one trial's record lives, after checking both halves of its key. */
-function recordPath(keep: string, session: string, rawId: string | number): { id: number; file: string } {
+function recordPath(keep: string, session: string, rawId: string | number): RecordLocation {
   const id = Number(rawId);
   if (!SESSION_RE.test(session) || !Number.isInteger(id) || id < 0 || id > 999_999) {
     throw new Error(`invalid trial: ${session}/${rawId}`);
