@@ -10,6 +10,10 @@ This project has not cut a release yet, so everything below sits under
 
 ## [Unreleased]
 
+### Added
+
+- **claude's admin dev server can run on a port other than 5173.** Set `ADMIN_PORT` in `stacks/claude/admin/.env` and Vite binds there, still with `strictPort`. The default stays 5173, and a new port needs a matching `CHAT_ALLOWED_ORIGINS` on the server or chat POSTs answer 403.
+
 ### Fixed
 
 - **Every row on the Jev calls page now shows when it happened.** A record with no `startedAt`, such as an `/ab` trial label, used to show `—` in the When column. Those rows now take their time from the record's `recordedAt`, and rows already ingested are re-read on the next server start.
