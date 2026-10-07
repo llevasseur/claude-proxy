@@ -390,6 +390,9 @@ response. See
 | `GET /api/jobs/job?id=` | one job's state plus its directory as a folder tree |
 | `GET /api/jobs/file?id=&file=` | one file inside a job directory, for the pretty/raw viewer |
 | `POST /api/jobs/delete` | delete one job directory from `~/.claude/jobs` (`{ id }`); refuses a running job |
+| `GET /api/ab-trials` | every ingested `/ab` trial, newest first, with a tally per command |
+| `GET /api/ab-trials/trial?session=&id=` | one trial in full, both outputs read from its label record in the Jev keep |
+| `POST /api/ab-trials/delete` | delete one trial's label record from the Jev keep, and its row (`{ session, id }`) |
 
 ## Ports
 

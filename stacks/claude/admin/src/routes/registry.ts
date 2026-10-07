@@ -1,3 +1,5 @@
+import { route as abTrialDetailRoute } from './ab-trial-detail';
+import { nav as abTrialsNav, route as abTrialsRoute } from './ab-trials';
 import { nav as adviceNav, route as adviceRoute } from './advice';
 import { route as cliFunctionRoute } from './cli-function';
 import { nav as cliInternalsNav, route as cliInternalsRoute } from './cli-internals';
@@ -96,6 +98,8 @@ export const ROUTES = [
   adviceRoute,
   suggestionBucketRoute,
   jevCallsRoute,
+  abTrialsRoute,
+  abTrialDetailRoute,
   ideasRoute,
   ideaDetailRoute,
 ] as const;
@@ -129,6 +133,7 @@ const STATIONS = [
   conceptsNav,
   adviceNav,
   jevCallsNav,
+  abTrialsNav,
   ideasNav,
 ] as const;
 
