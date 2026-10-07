@@ -954,11 +954,8 @@ CREATE INDEX IF NOT EXISTS jev_call_status_idx     ON jev_call(status, answer_co
 `;
 
 /**
- * `jev_call.started_at` falls back to a record's `recordedAt`. A record that carried
- * only that field was ingested with an empty `started_at`, and its file has not
- * changed since, so its watermark has to go for the row to be re-derived — the clear
- * the note on {@link SCHEMA_V23} anticipated. A database that reached this step
- * without `file_watermark` has no watermark to clear, hence the guard.
+ * Clears the `jev/%` watermarks so rows ingested with an empty `started_at`, before
+ * the `recordedAt` fallback, are re-derived. A no-op without `file_watermark`.
  */
 function schemaV24(db: DatabaseSync): void {
   const hasWatermarks = db

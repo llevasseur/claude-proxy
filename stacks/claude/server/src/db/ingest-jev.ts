@@ -250,9 +250,7 @@ function writeCall(st: JevStatements, session: string, id: number, record: JsonI
     session,
     id,
     FORMAT_VERSION,
-    // A record that is not an HTTP exchange — an `/ab` trial label, say — carries no
-    // `startedAt`, only the `recordedAt` it was written at. Without the fallback the
-    // row has no time at all and the table cannot say when it happened.
+    // A record that is not an HTTP exchange carries `recordedAt` instead of `startedAt`.
     stringField(record, 'startedAt') ?? stringField(record, 'recordedAt') ?? '',
     str(doc?.endedAt),
     num(doc?.durationMs),
