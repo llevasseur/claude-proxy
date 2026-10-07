@@ -41,6 +41,11 @@ async function main(): Promise<void> {
       `, ${stats.jevSkipped} skipped` +
       ` from ${resolveJevRecordDir()}`,
   );
+  console.log(
+    `[ingest] ${stats.ruleFires} rule fire${stats.ruleFires === 1 ? '' : 's'}` +
+      `, ${stats.ruleFiresParsed} read` +
+      `, ${stats.ruleFiresFilled} model${stats.ruleFiresFilled === 1 ? '' : 's'} filled from sessions`,
+  );
 }
 
 main().catch((cause: unknown) => {
