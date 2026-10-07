@@ -47,10 +47,9 @@ import {
  *   clears `jev/%` from `file_watermark` and the whole keep is re-derived, the way
  *   `CONCEPT_DETAIL` does it.
  * - **A record that is not an HTTP exchange is skipped too.** The keep also holds
- *   other v1 records numbered like calls — `/ab` writes trial labels carrying
- *   `kind`, `recordedAt`, `label` and `trial` with no `request` — and written as a
- *   call one would read as a failure with no status. It is counted like an unknown
- *   `v`, and a row an earlier pass wrote for it is dropped.
+ *   v1 records numbered like calls with no `request`, such as `/ab` trial labels,
+ *   which as a call would read as a failure with no status. It is counted like an
+ *   unknown `v`, and a row an earlier pass wrote for it is dropped.
  */
 
 /** The record format this file understands. Anything else is skipped. */
