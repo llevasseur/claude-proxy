@@ -822,7 +822,8 @@ export interface AbTrialResponse {
   fixture: { branch: string | null; sha: string | null } | null;
   scenario: string | null;
   rubric: string | null;
-  versions: Record<AbSide, { ref: string | null; lines: number | null }>;
+  /** `text` is the command text the arm ran as its instructions, null once nothing holds it. */
+  versions: Record<AbSide, { ref: string | null; lines: number | null; text: string | null }>;
   runs: Record<AbSide, AbRun>;
   judge: { shownFirst: AbSide | null; verdict: AbChoice | null; confidence: string | null; reasons: string[] };
   pickBy: string | null;
