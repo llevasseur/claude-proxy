@@ -236,10 +236,8 @@ async function readTrialFile(file: string, label: string): Promise<AbTrial> {
 const OUTPUT_DIFF_RE = /^output-\d+\.diff$/;
 
 /**
- * The text an arm ran as its instructions. The record carries it when the trial wrote it
- * inline; otherwise it is the `a.md` or `b.md` `/ab` wrote into the trial's directory,
- * which the record names only through the arm's diff path. A diff that is not one of
- * that directory's `output-<n>.diff` files names no trial directory, so nothing is read.
+ * The text an arm ran as its instructions: inline in the record, else the `a.md`/`b.md`
+ * beside the arm's diff. A diff that is not an `output-<n>.diff` file reads nothing.
  */
 async function versionText(trial: AbTrial, side: AbSide): Promise<string | null> {
   const inline = trial.versions[side].text;
@@ -249,7 +247,7 @@ async function versionText(trial: AbTrial, side: AbSide): Promise<string | null>
   try {
     return await readFile(path.join(path.dirname(diff), `${side}.md`), 'utf8');
   } catch {
-    // The trial directory was cleaned up; the page shows the ref alone.
+    // Trial directory is gone.
     return null;
   }
 }
