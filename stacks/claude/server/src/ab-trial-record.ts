@@ -53,6 +53,8 @@ export interface AbRun {
 export interface AbVersion {
   ref: string | null;
   lines: number | null;
+  /** The command text this arm ran as its instructions, null when nothing on disk still holds it. */
+  text: string | null;
 }
 
 export interface AbTrial {
@@ -131,7 +133,7 @@ function readRun(value: JsonInput): AbRun {
 
 function readVersion(value: JsonInput): AbVersion {
   const version = jsonObject(value);
-  return { ref: str(version?.ref), lines: num(version?.lines) };
+  return { ref: str(version?.ref), lines: num(version?.lines), text: str(version?.text) };
 }
 
 /** A scenario is written as a bare name or as an object naming itself. */

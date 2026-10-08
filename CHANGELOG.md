@@ -12,6 +12,7 @@ This project has not cut a release yet, so everything below sits under
 
 ### Added
 
+- **An A/B trial's page shows the prompt each arm ran.** Each arm gets a card with its ref and the full command text, folded to a peek with a Show more toggle. The text is read from the trial's `a.md`/`b.md` on each request and never stored; once the trial directory is cleaned up, the card says so.
 - **An A/B trials page lists every `/ab` trial, grouped and filterable by command.** Open a trial to see runs A and B side by side: their metrics, both full outputs, the judge's verdict, confidence and reasons, and your pick with whether it agreed. Ingest now writes the `kind: "ab"` label records to their own `ab_trial` table, still never to the Jev calls page. A trial's Delete button removes its label record from the Jev keep, so re-ingesting does not bring it back.
 - **MyCommand's rule fires land in a `rule_fire` table.** Ingest reads `logs/rule-fires.jsonl` from a byte watermark and keys each row on its line's offset, so a re-run never counts a fire twice. A fire with no model takes its session row's model, preferring the thread it names. See [`ingest-rule-fires.ts`](stacks/claude/server/src/db/ingest-rule-fires.ts).
 - **claude's admin dev server can run on a port other than 5173.** Set `ADMIN_PORT` in `stacks/claude/admin/.env` and Vite binds there, still with `strictPort`. The default stays 5173, and a new port needs a matching `CHAT_ALLOWED_ORIGINS` on the server or chat POSTs answer 403.

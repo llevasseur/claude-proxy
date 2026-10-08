@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { createRoute, Link, useNavigate, useParams } from '@tanstack/react-router';
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import { type AbRun, type AbSide, type AbTrialResponse, getAbTrial } from '../api';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { Markdown } from '../components/Markdown';
@@ -15,8 +15,9 @@ import { AgreementBadge, ChoiceBadge, commandLabel, TrialDelete } from './ab-tri
  *
  * The verdict comes first because it is what the trial decided: the judge's pick, how
  * sure it was, its reasons, and your pick beside it. Below that the two runs are
- * compared line for line, then both full outputs sit side by side. Everything here is
- * read from the trial's record in the Jev keep, not from the database.
+ * compared line for line, then the prompt each arm ran and both full outputs sit side by
+ * side. Everything here is read from the trial's record in the Jev keep, not from the
+ * database.
  */
 
 const SIDES = ['a', 'b'] as const satisfies readonly AbSide[];
@@ -64,6 +65,11 @@ export function AbTrialDetailPage() {
           <>
             <Verdict data={data} />
             <Comparison data={data} />
+            <div className='grid two'>
+              {SIDES.map((side) => (
+                <Prompt key={side} side={side} version={data.versions[side]} />
+              ))}
+            </div>
             <div className='grid two'>
               {SIDES.map((side) => (
                 <Output key={side} side={side} run={data.runs[side]} />
@@ -252,6 +258,36 @@ function Comparison({ data }: { data: AbTrialResponse }) {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+const PROMPT_CLAMP_LINES = 6;
+const PROMPT_CLAMP_CHARS = 280;
+
+/** The command text one arm ran as its instructions, folded to a peek until asked for. */
+function Prompt({ side, version }: { side: AbSide; version: AbTrialResponse['versions'][AbSide] }) {
+  const [open, setOpen] = useState(false);
+  const text = version.text;
+  const long = text !== null && (text.length > PROMPT_CLAMP_CHARS || text.split('\n').length > PROMPT_CLAMP_LINES);
+  return (
+    <div className='card'>
+      <div className='card-head'>
+        <h2>{side.toUpperCase()} prompt</h2>
+        {version.ref && <span className='range mono-break'>{version.ref}</span>}
+      </div>
+      {version.text ? (
+        <>
+          <p className={`gi-text mono mono-break${long ? (open ? ' is-full' : ' is-clamped') : ''}`}>{version.text}</p>
+          {long ? (
+            <button type='button' className='link gi-more' onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+              {open ? 'Show less' : 'Show more'}
+            </button>
+          ) : null}
+        </>
+      ) : (
+        <div className='empty'>This trial's directory no longer holds the prompt.</div>
+      )}
     </div>
   );
 }

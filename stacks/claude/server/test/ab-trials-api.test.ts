@@ -33,6 +33,10 @@ interface LabelOptions {
   recordedAt: string;
   verdict: 'a' | 'b' | 'tie';
   pick?: 'a' | 'b' | 'tie';
+  /** Each arm's diff path, which places the trial directory its prompt is read from. */
+  diffs?: Partial<Record<'a' | 'b', string>>;
+  /** Each arm's prompt, carried inline in the record. */
+  texts?: Partial<Record<'a' | 'b', string>>;
 }
 
 /** One label run as the recorder writes it: its own directory, a `kind: "ab"` session, one record. */
@@ -57,10 +61,29 @@ async function writeLabel(session: string, opts: LabelOptions): Promise<void> {
       mode: 'worktree',
       fixture: { branch: 'feat/fixture-app', sha: '5237' },
       rubric: 'Which output is better?',
-      versions: { a: { ref: 'a.md', lines: 150 }, b: { ref: 'b.md', lines: 13 } },
+      versions: {
+        a: { ref: 'a.md', lines: 150, text: opts.texts?.a },
+        b: { ref: 'b.md', lines: 13, text: opts.texts?.b },
+      },
       runs: {
-        a: { output: '## Output A', title: 'A title', tokens: 100, durationMs: 2000, toolUses: 3, prs: [12] },
-        b: { output: '## Output B', title: 'B title', tokens: 80, durationMs: 1500, toolUses: 2, skipped: ['publish'] },
+        a: {
+          output: '## Output A',
+          title: 'A title',
+          tokens: 100,
+          durationMs: 2000,
+          toolUses: 3,
+          prs: [12],
+          diff: opts.diffs?.a,
+        },
+        b: {
+          output: '## Output B',
+          title: 'B title',
+          tokens: 80,
+          durationMs: 1500,
+          toolUses: 2,
+          skipped: ['publish'],
+          diff: opts.diffs?.b,
+        },
       },
       judge: { shownFirst: 'b', verdict: opts.verdict, confidence: 'high', reasons: ['one', 'two'] },
       pick: opts.pick ?? null,
@@ -152,7 +175,41 @@ describe('buildAbTrial', () => {
     expect(answer.judge).toEqual({ shownFirst: 'b', verdict: 'b', confidence: 'high', reasons: ['one', 'two'] });
     expect(answer.trial).toMatchObject({ pick: 'a', agrees: false });
     expect(answer.pickBy).toBe('human');
-    expect(answer.versions.b).toEqual({ ref: 'b.md', lines: 13 });
+    expect(answer.versions.b).toEqual({ ref: 'b.md', lines: 13, text: null });
+  });
+
+  it("reads each arm's prompt from the trial directory its diff sits in", async () => {
+    const session = '20261007T100000-aaaaaa';
+    const trialDir = path.join(logDir, 'pr-20261007T100000Z');
+    await mkdir(trialDir, { recursive: true });
+    await writeFile(path.join(trialDir, 'a.md'), '# Prompt A', 'utf8');
+    await writeFile(path.join(trialDir, 'b.md'), '# Prompt B', 'utf8');
+    await writeLabel(session, {
+      command: 'pr',
+      recordedAt: '2026-10-07T10:00:00.000Z',
+      verdict: 'b',
+      diffs: { a: path.join(trialDir, 'output-2.diff'), b: path.join(trialDir, 'output-1.diff') },
+    });
+
+    const answer = await buildAbTrial(keep, session, '1');
+    expect(answer.versions.a.text).toBe('# Prompt A');
+    expect(answer.versions.b.text).toBe('# Prompt B');
+  });
+
+  it('prefers a prompt the record carries, and reads nothing beside a diff that is not a trial output', async () => {
+    const session = '20261007T100000-aaaaaa';
+    await writeFile(path.join(logDir, 'b.md'), 'not a prompt', 'utf8');
+    await writeLabel(session, {
+      command: 'pr',
+      recordedAt: '2026-10-07T10:00:00.000Z',
+      verdict: 'b',
+      texts: { a: 'inline A' },
+      diffs: { b: path.join(logDir, 'other.diff') },
+    });
+
+    const answer = await buildAbTrial(keep, session, '1');
+    expect(answer.versions.a.text).toBe('inline A');
+    expect(answer.versions.b.text).toBeNull();
   });
 
   it('refuses a key that could leave the keep, and 404s one that is not there', async () => {
