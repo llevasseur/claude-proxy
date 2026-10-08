@@ -262,9 +262,14 @@ function Comparison({ data }: { data: AbTrialResponse }) {
   );
 }
 
+const PROMPT_CLAMP_LINES = 6;
+const PROMPT_CLAMP_CHARS = 280;
+
 /** The command text one arm ran as its instructions, folded to a peek until asked for. */
 function Prompt({ side, version }: { side: AbSide; version: AbTrialResponse['versions'][AbSide] }) {
   const [open, setOpen] = useState(false);
+  const text = version.text;
+  const long = text !== null && (text.length > PROMPT_CLAMP_CHARS || text.split('\n').length > PROMPT_CLAMP_LINES);
   return (
     <div className='card'>
       <div className='card-head'>
@@ -273,10 +278,12 @@ function Prompt({ side, version }: { side: AbSide; version: AbTrialResponse['ver
       </div>
       {version.text ? (
         <>
-          <p className={`gi-text mono ${open ? 'is-full' : 'is-clamped'}`}>{version.text}</p>
-          <button type='button' className='link gi-more' onClick={() => setOpen((o) => !o)} aria-expanded={open}>
-            {open ? 'Show less' : 'Show more'}
-          </button>
+          <p className={`gi-text mono mono-break${long ? (open ? ' is-full' : ' is-clamped') : ''}`}>{version.text}</p>
+          {long ? (
+            <button type='button' className='link gi-more' onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+              {open ? 'Show less' : 'Show more'}
+            </button>
+          ) : null}
         </>
       ) : (
         <div className='empty'>This trial's directory no longer holds the prompt.</div>
