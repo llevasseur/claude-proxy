@@ -19,13 +19,15 @@ import { parseJson, stringField } from './json.js';
  *
  * **The list reads `ab_trial`; a trial reads its record.** The table holds only what
  * the list renders, so an arm's full output, the rubric and the judge's reasons are
- * read from the label record in the Jev keep each time a trial is opened. A record
+ * read from the label record in the Jev keep each time a trial is opened, and each
+ * arm's instructions from the trial's own directory beside it. A record
  * that has left the keep is a 404 even while its row lingers until the next ingest.
  *
  * **A delete removes the record, not just the row.** The row is a view of the record,
  * and dropping only the row would bring it back the next time the keep is re-derived.
  * The trial's own working directory under `~/.my-command/ab/` is not touched: the
- * label record does not name it.
+ * label record names it only through an arm's diff path, which is read, never trusted
+ * as something to remove.
  */
 
 export type { AbChoice, AbRun, AbSide, AbVersion };
@@ -230,11 +232,34 @@ async function readTrialFile(file: string, label: string): Promise<AbTrial> {
   return trial;
 }
 
+/** The diff file `/ab` writes into a trial's own directory, one per judged output. */
+const OUTPUT_DIFF_RE = /^output-\d+\.diff$/;
+
+/**
+ * The text an arm ran as its instructions. The record carries it when the trial wrote it
+ * inline; otherwise it is the `a.md` or `b.md` `/ab` wrote into the trial's directory,
+ * which the record names only through the arm's diff path. A diff that is not one of
+ * that directory's `output-<n>.diff` files names no trial directory, so nothing is read.
+ */
+async function versionText(trial: AbTrial, side: AbSide): Promise<string | null> {
+  const inline = trial.versions[side].text;
+  if (inline !== null) return inline;
+  const diff = trial.runs[side].diff;
+  if (!diff || !path.isAbsolute(diff) || !OUTPUT_DIFF_RE.test(path.basename(diff))) return null;
+  try {
+    return await readFile(path.join(path.dirname(diff), `${side}.md`), 'utf8');
+  } catch {
+    // The trial directory was cleaned up; the page shows the ref alone.
+    return null;
+  }
+}
+
 /** One trial in full, read from its record in the keep. */
 export async function buildAbTrial(keep: string, session: string, rawId: string): Promise<AbTrialResponse> {
   const { id, file } = recordPath(keep, session, rawId);
   const trial = await readTrialFile(file, `${session}/${id}`);
   const { a, b } = trial.runs;
+  const [aText, bText] = await Promise.all([versionText(trial, 'a'), versionText(trial, 'b')]);
   return {
     trial: {
       session,
@@ -256,7 +281,7 @@ export async function buildAbTrial(keep: string, session: string, rawId: string)
     fixture: trial.fixture,
     scenario: trial.scenario,
     rubric: trial.rubric,
-    versions: trial.versions,
+    versions: { a: { ...trial.versions.a, text: aText }, b: { ...trial.versions.b, text: bText } },
     runs: trial.runs,
     judge: trial.judge,
     pickBy: trial.pickBy,
