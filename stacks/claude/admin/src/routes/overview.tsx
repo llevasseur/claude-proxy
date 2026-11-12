@@ -196,8 +196,7 @@ function OverviewBody({
   model: string | null;
 }) {
   const date = data.digest.date;
-  // An idle day still headlines as zeros, so the window's history below stays on screen.
-  // A filtered window omits a day the model never ran on, hence the empty fallback.
+  // A filtered window omits a day the model never ran on, so fall back to an all-zero digest.
   const d = (model ? digests.find((x) => x.date === date) : data.digest) ?? computeDigest([], { date });
   const trend = new Map((d.trend ?? []).map((t) => [t.field, t]));
 
