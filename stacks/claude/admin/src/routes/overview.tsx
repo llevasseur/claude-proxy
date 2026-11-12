@@ -1,4 +1,4 @@
-import type { UsageDigest } from '@agent-proxy/claude-core';
+import { computeDigest, type UsageDigest } from '@agent-proxy/claude-core';
 import { useQuery } from '@tanstack/react-query';
 import { createRoute, Link } from '@tanstack/react-router';
 import { Monitor } from 'lucide-react';
@@ -48,7 +48,7 @@ export function OverviewPage() {
   // filtered window instead.
   const headDay = trends.digests.find((x) => x.date === data?.digest.date);
   const counts = model
-    ? headDay && { requests: headDay.requestCount, skipped: headDay.skipped }
+    ? data && { requests: headDay?.requestCount ?? 0, skipped: headDay?.skipped ?? 0 }
     : data && { requests: data.meta.files, skipped: data.meta.parseErrors };
 
   return (
@@ -196,44 +196,39 @@ function OverviewBody({
   model: string | null;
 }) {
   const date = data.digest.date;
-  const d = model ? digests.find((x) => x.date === date) : data.digest;
-  const trend = new Map((d?.trend ?? []).map((t) => [t.field, t]));
-
-  if (!model && data.digest.requestCount === 0) {
-    return <div className='card empty'>No Claude activity captured for {date}.</div>;
-  }
+  // A filtered window omits a day the model never ran on, so fall back to an all-zero digest.
+  const d = (model ? digests.find((x) => x.date === date) : data.digest) ?? computeDigest([], { date });
+  const trend = new Map((d.trend ?? []).map((t) => [t.field, t]));
 
   return (
     <>
-      {d && d.requestCount > 0 ? (
-        <div className='grid stats'>
-          {METRICS.map((m) => {
-            const t = m.trendField ? trend.get(m.trendField) : undefined;
-            return (
-              <StatCard
-                key={m.key}
-                label={m.label}
-                value={m.headline ? m.headline(d) : m.format(m.value(d))}
-                sub={m.sub?.(d)}
-                deltaPct={t?.deltaPct}
-                baseline={t?.priorDate ? { date: t.priorDate, value: m.format(t.prior) } : undefined}
-                increaseIsBad={m.increaseIsBad}
-                metric={m.key}
-                spark={{
-                  points: digests.map((x) => ({ date: x.date, value: m.value(x) })),
-                  color: m.color,
-                  format: m.format,
-                }}
-              />
-            );
-          })}
-        </div>
-      ) : (
-        // The window can still hold this model on earlier days, so the plots below stay.
-        <div className='card empty'>
-          No {model && shortModelName(model)} requests captured for {date}.
+      {d.requestCount === 0 && (
+        <div className='muted filter-note'>
+          No {model ? `${shortModelName(model)} ` : 'Claude '}requests captured for {date} yet — today reads as zeros.
         </div>
       )}
+      <div className='grid stats'>
+        {METRICS.map((m) => {
+          const t = m.trendField ? trend.get(m.trendField) : undefined;
+          return (
+            <StatCard
+              key={m.key}
+              label={m.label}
+              value={m.headline ? m.headline(d) : m.format(m.value(d))}
+              sub={m.sub?.(d)}
+              deltaPct={t?.deltaPct}
+              baseline={t?.priorDate ? { date: t.priorDate, value: m.format(t.prior) } : undefined}
+              increaseIsBad={m.increaseIsBad}
+              metric={m.key}
+              spark={{
+                points: digests.map((x) => ({ date: x.date, value: m.value(x) })),
+                color: m.color,
+                format: m.format,
+              }}
+            />
+          );
+        })}
+      </div>
 
       {/* Both plots follow the page head until their own picker is touched, and each
           fetches the days it is actually drawing. */}
@@ -249,7 +244,7 @@ function OverviewBody({
             </Link>
           </div>
           <ul className='minilist'>
-            {(d?.topTools ?? []).slice(0, 5).map((t) => (
+            {d.topTools.slice(0, 5).map((t) => (
               <li key={t.name}>
                 <span>{t.name}</span>
                 <span className='muted'>

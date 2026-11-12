@@ -10,6 +10,10 @@ This project has not cut a release yet, so everything below sits under
 
 ## [Unreleased]
 
+### Fixed
+
+- **The Overview keeps showing history on a day with no Claude activity yet.** It used to replace the whole page with "No Claude activity captured" until the first request of the day. Now today's tiles read as zeros, with a short note, and the mini charts, plots, and earlier days stay on screen.
+
 ### Added
 
 - **An A/B trial's page shows the prompt each arm ran.** Each arm gets a card with its ref and the full command text, folded to a peek with a Show more toggle. The text is read from the trial's `a.md`/`b.md` on each request and never stored; once the trial directory is cleaned up, the card says so.
